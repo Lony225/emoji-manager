@@ -473,6 +473,21 @@ async function main() {
     assertEq('各自成为子分类（名称已改），子文件夹再成为下一级', JSON.stringify(multiResult.categoryNames), JSON.stringify(['测试文件夹 / 眨眼包', '测试文件夹 / 眨眼包 / deep', '测试文件夹 / love']));
     const multiTree = await cdp.eval(`(() => { const s = window.__emojiStore.getState(); const p = s.categories.find(c => c.name === '测试文件夹'); const kids = s.categories.filter(c => c.parentId === p.id).map(c => c.name).sort(); const wink = s.categories.find(c => c.name === '眨眼包'); const deep = s.categories.find(c => c.name === 'deep'); return { kids, deepParent: deep ? s.categories.find(c => c.id === deep.parentId)?.name : null, deepCount: s.stickers.filter(x => x.categoryId === deep?.id).length, winkDirect: s.stickers.filter(x => x.categoryId === wink?.id).length }; })()`);
     check('子文件夹逐级成为子分类（第三级）', JSON.stringify(multiTree) === JSON.stringify({ kids: ['love', '可爱', '眨眼包', '难过'], deepParent: '眨眼包', deepCount: 1, winkDirect: 0 }), JSON.stringify(multiTree));
+    // 右键“导出这个分类”要包含所有层级的子分类里的表情
+    const exportCheck = await cdp.eval(`(() => {
+      const s = window.__emojiStore.getState();
+      const root = s.categories.find(c => c.name === '测试文件夹');
+      const ids = new Set([root.id]);
+      let grew = true;
+      while (grew) { grew = false; for (const c of s.categories) if (c.parentId && ids.has(c.parentId) && !ids.has(c.id)) { ids.add(c.id); grew = true; } }
+      const expected = s.stickers.filter(x => x.categoryId && ids.has(x.categoryId)).length;
+      window.__emojiActions.exportCategory(root.id);
+      const d = window.__uiStore.getState().dialog;
+      window.__uiStore.getState().closeDialog();
+      return { expected, got: d.kind === 'exportPackage' ? d.ids.length : -1, levels: ids.size };
+    })()`);
+    check('导出分类包含所有层级的子分类', exportCheck.got === exportCheck.expected && exportCheck.levels >= 3, JSON.stringify(exportCheck));
+
     // 新建一级分类并把多个文件夹放在它下面
     const newParentResult = await cdp.eval(`(() => {
       const folders = [{ name: '甲', files: [window.__mkFolderFile('${b64('cat-surprised.png')}', 'z.png', 'z.png')] }];

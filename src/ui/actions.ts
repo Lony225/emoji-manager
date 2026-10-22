@@ -6,7 +6,7 @@ import { platform } from '../platform';
 import { errorMessage } from '../core/subscription/sync';
 import { extFromName } from '../core/images';
 import { defaultPackageName } from '../core/package';
-import { categoryLabel } from '../core/selectors';
+import { categoryIdsIncludingChildren, categoryLabel } from '../core/selectors';
 import type { Sticker } from '../core/types';
 
 const lib = () => useLibraryStore.getState();
@@ -418,9 +418,9 @@ export function openExportDialog(ids: string[]): void {
   ui().openDialog({ kind: 'exportPackage', ids, defaultName: defaultPackageName(stickers, lib().categories) });
 }
 
+/** 导出一个分类：包含它下面所有层级的子分类 */
 export function exportCategory(categoryId: string): void {
-  const cats = lib().categories;
-  const ids = new Set([categoryId, ...cats.filter((c) => c.parentId === categoryId).map((c) => c.id)]);
+  const ids = new Set(categoryIdsIncludingChildren(lib().categories, categoryId));
   openExportDialog(lib().stickers.filter((s) => s.categoryId !== null && ids.has(s.categoryId)).map((s) => s.id));
 }
 

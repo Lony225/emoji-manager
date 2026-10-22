@@ -156,10 +156,27 @@ export function Sidebar() {
     const n = treeCounts.get(cat.id) ?? 0;
     const descendants = categoryIdsIncludingChildren(categories, cat.id).length - 1;
     const isPack = !!cat.subscriptionId && !!cat.packKey && cat.packKey !== 'root';
+    const sub = cat.subscriptionId ? subscriptions.find((s) => s.id === cat.subscriptionId) : undefined;
     openMenu({
       x: e.clientX,
       y: e.clientY,
       items: [
+        // 订阅生成的分类：直接在这里同步整个订阅
+        ...(sub
+          ? [
+              {
+                label: `立即同步“${sub.name}”`,
+                icon: 'sync' as const,
+                disabled: !!syncStatus[sub.id]?.running,
+                onSelect: () =>
+                  void lib()
+                    .syncSubscription(sub.id)
+                    .then((r) => toast(syncSummary(r), r.failed ? 'error' : 'success'))
+                    .catch((err) => toast(errorMessage(err), 'error')),
+              },
+              { label: '', separator: true },
+            ]
+          : []),
         {
           label: '重命名…',
           icon: 'edit',
