@@ -114,14 +114,23 @@ export function dialog({ title, body, footer, wide, onClose }) {
 
 export function confirmDialog({ title, message, confirmText = '确定', danger = false }) {
   return new Promise((resolve) => {
+    // 先给出结果再关闭：关闭会触发 onClose，不能让它把结果覆盖成“取消”
+    let settled = false;
+    const finish = (v) => {
+      settled = true;
+      resolve(v);
+      d.close();
+    };
     const d = dialog({
       title,
       body: h('p', {}, message),
       footer: [
-        h('button', { class: 'btn', onClick: () => (d.close(), resolve(false)) }, '取消'),
-        h('button', { class: `btn primary${danger ? ' danger' : ''}`, onClick: () => (d.close(), resolve(true)) }, confirmText),
+        h('button', { class: 'btn', onClick: () => finish(false) }, '取消'),
+        h('button', { class: `btn primary${danger ? ' danger' : ''}`, onClick: () => finish(true) }, confirmText),
       ],
-      onClose: () => resolve(false),
+      onClose: () => {
+        if (!settled) resolve(false);
+      },
     });
   });
 }
@@ -131,20 +140,24 @@ export function promptDialog({ title, label, value = '', placeholder = '', confi
     const input = multiline
       ? h('textarea', { class: 'input', placeholder }, value)
       : h('input', { class: 'input', value, placeholder, maxlength: 80 });
-    const submit = () => {
+    let settled = false;
+    const finish = (v) => {
+      settled = true;
+      resolve(v);
       d.close();
-      resolve(input.value);
     };
     const d = dialog({
       title,
       body: h(
         'form',
-        { class: 'field', onSubmit: (e) => (e.preventDefault(), submit()) },
+        { class: 'field', onSubmit: (e) => (e.preventDefault(), finish(input.value)) },
         label ? h('label', {}, label) : null,
         input,
       ),
-      footer: [h('button', { class: 'btn', onClick: () => d.close() }, '取消'), h('button', { class: 'btn primary', onClick: submit }, confirmText)],
-      onClose: () => resolve(null),
+      footer: [h('button', { class: 'btn', onClick: () => finish(null) }, '取消'), h('button', { class: 'btn primary', onClick: () => finish(input.value) }, confirmText)],
+      onClose: () => {
+        if (!settled) resolve(null);
+      },
     });
   });
 }
