@@ -43,5 +43,5 @@ EOF
 fi
 
 echo "==> 健康检查"
-ssh "$HOST" "curl -s -H 'Host: $DOMAIN' http://127.0.0.1/healthz; echo"
+ssh "$HOST" "curl -sk --resolve $DOMAIN:443:127.0.0.1 https://$DOMAIN/healthz || curl -s -H 'Host: $DOMAIN' http://127.0.0.1:8844/healthz; echo"
 echo "完成：https://$DOMAIN"
