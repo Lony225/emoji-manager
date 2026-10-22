@@ -18,10 +18,10 @@
 
 | 系统 | 文件 | 说明 |
 |---|---|---|
-| Windows 10 / 11 | `Emoji Manager-x.y.z-win-x64.exe` | 安装版：向导安装，开始菜单快捷方式，可设开机自启 |
-| Windows 10 / 11 | `Emoji Manager-x.y.z-portable.exe` | 便携版：双击直接运行，不写注册表，删掉即卸载 |
-| macOS（Apple Silicon） | `Emoji Manager-x.y.z-mac-arm64.dmg` | M1 / M2 / M3 / M4 |
-| macOS（Intel） | `Emoji Manager-x.y.z-mac-x64.dmg` | |
+| Windows 10 / 11 | `Emoji.Manager-x.y.z-win-x64.exe` | 安装版：向导安装，开始菜单快捷方式，可设开机自启 |
+| Windows 10 / 11 | `Emoji.Manager-x.y.z-portable.exe` | 便携版：双击直接运行，不写注册表，删掉即卸载 |
+| macOS（Apple Silicon） | `Emoji.Manager-x.y.z-mac-arm64.dmg` | M1 / M2 / M3 / M4 |
+| macOS（Intel） | `Emoji.Manager-x.y.z-mac-x64.dmg` | |
 
 安装包目前没有代码签名：
 
