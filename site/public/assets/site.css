@@ -805,3 +805,24 @@ kbd {
   border-radius: 4px;
   background: var(--tile);
 }
+
+/* 导入 zip 的进度对话框：大一号的进度条；传完后服务器解包时来回滚动表示“还在处理” */
+.progress.big {
+  height: 10px;
+  border-radius: 5px;
+  margin-top: 0;
+}
+
+.progress.indeterminate > div {
+  width: 35% !important;
+  animation: progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}

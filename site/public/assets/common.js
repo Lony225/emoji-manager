@@ -75,15 +75,25 @@ export async function api(path, { method = 'GET', body, form } = {}) {
 }
 
 /** 带进度的上传（fetch 拿不到上传进度，用 XMLHttpRequest） */
-export function upload(path, form, onProgress) {
+/** 带进度的上传：onProgress(已传字节, 总字节)；signal 可取消（reject 的错误带 aborted: true） */
+export function upload(path, form, onProgress, { signal } = {}) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', path);
     xhr.withCredentials = true;
+    let total = 0;
     xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+      if (e.lengthComputable && onProgress) {
+        total = e.total;
+        onProgress(e.loaded, e.total);
+      }
+    };
+    // 请求体发完、服务器开始处理时再报一次 100%：最后一个 progress 事件不一定到 total
+    xhr.upload.onload = () => {
+      if (onProgress && total) onProgress(total, total);
     };
     xhr.onerror = () => reject(new Error('网络错误，上传中断'));
+    xhr.onabort = () => reject(Object.assign(new Error('已取消'), { aborted: true }));
     xhr.onload = () => {
       let data = null;
       try {
@@ -94,6 +104,7 @@ export function upload(path, form, onProgress) {
       if (xhr.status >= 200 && xhr.status < 300) resolve(data);
       else reject(new Error(data?.error || (xhr.status === 413 ? '文件太大，超过了服务器允许的上传大小' : `请求失败（HTTP ${xhr.status}）`)));
     };
+    signal?.addEventListener('abort', () => xhr.abort(), { once: true });
     xhr.send(form);
   });
 }
@@ -113,23 +124,24 @@ export function toast(message, kind = 'info') {
 }
 
 // ---------------------------------------------------------------- 对话框
-export function dialog({ title, body, footer, wide, onClose }) {
+/** closable: false 时没有关闭按钮，Esc 和点遮罩都不会关（用于不能中断的进度） */
+export function dialog({ title, body, footer, wide, onClose, closable = true }) {
   const close = () => {
     backdrop.remove();
     document.removeEventListener('keydown', onKey);
     onClose?.();
   };
   const onKey = (e) => {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape' && closable) close();
   };
   const box = h(
     'div',
     { class: `dialog${wide ? ' wide' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
-    h('header', {}, h('h3', {}, title), h('button', { class: 'btn ghost sm', 'aria-label': '关闭', onClick: close }, icon('x'))),
+    h('header', {}, h('h3', {}, title), closable ? h('button', { class: 'btn ghost sm', 'aria-label': '关闭', onClick: close }, icon('x')) : null),
     h('div', { class: 'body' }, ...[].concat(body)),
     footer ? h('footer', {}, ...[].concat(footer)) : null,
   );
-  const backdrop = h('div', { class: 'backdrop', onMousedown: (e) => e.target === backdrop && close() }, box);
+  const backdrop = h('div', { class: 'backdrop', onMousedown: (e) => closable && e.target === backdrop && close() }, box);
   document.body.append(backdrop);
   document.addEventListener('keydown', onKey);
   setTimeout(() => box.querySelector('input, textarea, button.primary')?.focus(), 30);

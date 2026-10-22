@@ -167,27 +167,58 @@ async function importZip() {
   if (!file) return;
   const form = new FormData();
   form.append('file', file, file.name);
-  const status = h('div', { class: 'toast' }, `正在上传 ${file.name}（${formatBytes(file.size)}）…`);
-  let box = document.querySelector('.toasts');
-  if (!box) {
-    box = h('div', { class: 'toasts' });
-    document.body.append(box);
-  }
-  box.append(status);
+  // 进度对话框：上传阶段显示百分比、已传大小、速度、剩余时间；传完后服务器解包入库时显示滚动条
+  const ac = new AbortController();
+  const bar = h('div', { style: { width: '0%' } });
+  const track = h('div', { class: 'progress big' }, bar);
+  const pctEl = h('strong', { class: 'num', style: { fontSize: '20px' } }, '0%');
+  const detail = h('span', { class: 'hint num' }, `0 B / ${formatBytes(file.size)}`);
+  const phase = h('div', { class: 'hint' }, '正在上传到服务器…');
+  const cancelBtn = h('button', { class: 'btn', onClick: () => ac.abort() }, '取消');
+  const d = dialog({
+    title: `导入 ${file.name}`,
+    closable: false,
+    body: [h('div', { class: 'row', style: { justifyContent: 'space-between', alignItems: 'baseline' } }, pctEl, detail), track, phase],
+    footer: [cancelBtn],
+  });
+  const t0 = Date.now();
+  let uploaded = false;
+  const onProgress = (loaded, total) => {
+    if (uploaded) return;
+    const pct = Math.min(100, Math.floor((100 * loaded) / total));
+    bar.style.width = `${pct}%`;
+    pctEl.textContent = `${pct}%`;
+    const secs = (Date.now() - t0) / 1000;
+    const speed = secs > 0.5 ? loaded / secs : 0;
+    const left = speed > 0 ? Math.ceil((total - loaded) / speed) : 0;
+    detail.textContent = `${formatBytes(loaded)} / ${formatBytes(total)}${speed ? ` · ${formatBytes(speed)}/s` : ''}${left > 0 && loaded < total ? ` · 剩余约 ${formatDuration(left)}` : ''}`;
+    if (loaded >= total) {
+      uploaded = true;
+      track.classList.add('indeterminate');
+      pctEl.textContent = '100%';
+      detail.textContent = `${formatBytes(total)} · 用时 ${formatDuration(Math.round(secs))}`;
+      phase.textContent = '上传完成，服务器正在解包并入库，大包可能要等一会儿…';
+      cancelBtn.disabled = true;
+    }
+  };
   try {
-    const r = await upload('/api/import', form, (loaded, total) => {
-      const pct = Math.floor((100 * loaded) / total);
-      status.textContent = pct < 100 ? `正在上传 ${file.name}：${pct}%` : `上传完成，服务器正在解包 ${file.name}…`;
-    });
-    status.remove();
+    const r = await upload('/api/import', form, onProgress, { signal: ac.signal });
+    d.close();
     await refresh();
     toast(`已导入 ${r.added} 个表情到 ${r.names.length} 个表情包${r.packs ? `（新建 ${r.packs} 个）` : ''}${r.skipped ? `，跳过 ${r.skipped} 个重复` : ''}${r.missing ? `，${r.missing} 个缺少图片` : ''}`, 'success');
   } catch (e) {
-    status.remove();
-    toast(`导入失败：${e.message}`, 'error');
+    d.close();
+    if (e.aborted) toast('已取消导入');
+    else toast(`导入失败：${e.message}`, 'error');
   }
 }
 
+function formatDuration(secs) {
+  if (secs < 60) return `${secs} 秒`;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return secs < 3600 ? `${m} 分${s ? ` ${s} 秒` : ''}` : `${Math.floor(m / 60)} 小时 ${m % 60} 分`;
+}
 // ---------------------------------------------------------------- 表情
 async function renameSticker(s) {
   const name = await promptDialog({ title: '重命名', value: s.name, confirmText: '保存' });
