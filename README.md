@@ -1,0 +1,141 @@
+<div align="center">
+
+<img src="build/icon.png" width="96" alt="Emoji Manager">
+
+# 表情包管理器 Emoji Manager
+
+本地管理表情包：多级分类、标签、收藏、搜索，点一下就复制；全局快捷键呼出桌面浮窗；输入订阅地址自动同步别人分享的表情包。
+
+[下载最新版](https://github.com/Lony225/emoji-manager/releases/latest) · [更新日志](CHANGELOG.md) · [订阅格式](docs/subscription-format.md) · [设计文档](docs/设计文档.md)
+
+</div>
+
+![主窗口](docs/screenshots/main.png)
+
+## 下载安装
+
+到 [Releases](https://github.com/Lony225/emoji-manager/releases/latest) 页面下载：
+
+| 系统 | 文件 | 说明 |
+|---|---|---|
+| Windows 10 / 11 | `Emoji Manager-x.y.z-win-x64.exe` | 安装版：向导安装，开始菜单快捷方式，可设开机自启 |
+| Windows 10 / 11 | `Emoji Manager-x.y.z-portable.exe` | 便携版：双击直接运行，不写注册表，删掉即卸载 |
+| macOS（Apple Silicon） | `Emoji Manager-x.y.z-mac-arm64.dmg` | M1 / M2 / M3 / M4 |
+| macOS（Intel） | `Emoji Manager-x.y.z-mac-x64.dmg` | |
+
+安装包目前没有代码签名：
+
+- Windows 的 SmartScreen 提示时，点「更多信息 → 仍要运行」。
+- macOS 首次打开被拦下时，到「系统设置 → 隐私与安全性」里点「仍要打开」。
+
+应用启动时会检查 GitHub 上的新版本，有更新会弹窗提示并给出下载链接，不会自动安装；可在设置里关闭。
+
+## 功能
+
+| | |
+|---|---|
+| 导入 | 选择图片、拖拽进窗口、`Ctrl+V` 粘贴；按内容去重，相同图片再次导入到某个分类时会把已有的移过去，不会重复 |
+| 文件夹导入 | 一次选多个文件夹（或一起拖进窗口），每个文件夹成为一个分类，子文件夹逐级成为子分类；可放在任意分类下 |
+| 分类 | 像文件夹一样任意多级：侧栏缩进可折叠，拖动调整顺序或拖到任意分类上成为它的子分类；进入分类后顶部页签切换子分类、面包屑回到上级 |
+| 标签 | 多标签、输入联想、侧栏标签云筛选（可多选）、全局重命名 / 删除 |
+| 命名 | 每个表情下方一行显示「名称 / 分类」，点名称或按 `F2` 就地改名；多选可批量命名（名称 1、名称 2 …） |
+| 使用 | 点击即复制（动图默认按文件复制以保留动画）；拖动框选、`Ctrl` / `Shift` 点选，多选后一键把多个文件一起复制、粘贴即发送 |
+| 浮窗 | 全局快捷键（默认 `Alt+Shift+E`）呼出置顶小窗：打开即是「最近使用」，输入即搜索，`Enter` 或点击复制后自动隐藏；可「固定」常驻 |
+| 托盘 | 关闭主窗口最小化到托盘，快捷键照常可用；安装版可设开机自启 |
+| 订阅 | 输入 JSON 清单地址即同步；增量更新、保留你改过的名字 / 标签 / 分类、启动时自动同步 |
+| 分享 | 任意选中的表情、整个分类或全部，导出成 zip（含名称、标签、多级分类），对方导入即还原；解压上传后还能当订阅源 |
+| 数据 | `library.json` + `stickers/` 目录，可改到同步盘目录在多台电脑间共用；自动保留上一版备份 |
+
+<p align="center">
+  <img src="docs/screenshots/float.png" width="300" alt="桌面浮窗">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/dark-subscriptions.png" width="560" alt="深色模式与订阅管理">
+</p>
+
+## 浮窗怎么用
+
+1. 在任何程序里按 `Alt+Shift+E`（可在设置里改），浮窗出现在鼠标所在屏幕的右下角并聚焦搜索框。
+2. 直接打字搜索名称或标签；`↑ ↓ ← →` 移动，`Enter` 复制，`Tab` 在「最近 / 收藏 / 全部 / 各分类」之间切换，`Esc` 隐藏。
+3. 复制后浮窗自动隐藏，回到聊天窗口 `Ctrl+V` 粘贴即可。
+4. 想让它一直留在桌面上，点标题栏的图钉「固定」：固定后复制和失焦都不会隐藏。
+5. 浮窗是只读的：改名、打标签、删除等操作在主窗口完成，浮窗会自动跟着刷新。
+
+## 订阅：分享你的表情包
+
+把图片和一个 JSON 清单放到任何静态托管（GitHub Pages、对象存储、自己的服务器），别人在应用里输入清单地址就能订阅，你更新清单后他们重新同步即可：
+
+```json
+{
+  "name": "猫猫表情包",
+  "tags": ["猫"],
+  "stickers": [
+    "images/01.gif",
+    { "id": "02", "url": "images/02.png", "name": "开心", "tags": ["开心"] }
+  ]
+}
+```
+
+完整格式、多包订阅、合并规则见 [docs/subscription-format.md](docs/subscription-format.md)。应用「导出」生成的 zip 解压后就是这个格式。
+
+## 数据位置
+
+- Windows：`%APPDATA%\emoji-manager\library`
+- macOS：`~/Library/Application Support/emoji-manager/library`
+- 目录内：`library.json`（资料）、`library.json.bak`（上一版备份）、`stickers/`（图片）、`usage.json`（最近使用记录）
+- 可在「设置 → 数据目录 → 更改」换到任意目录（会把现有数据复制过去）
+
+退出程序：右键托盘图标选「退出」，或在设置里关掉「关闭主窗口时最小化到托盘」后直接关窗口。
+
+## 开发
+
+需要 Node 22 和 pnpm。
+
+```bash
+pnpm install
+pnpm samples          # 生成示例表情和应用图标
+pnpm dev:electron     # 桌面版开发模式（热更新）
+pnpm dev              # 浏览器版：http://localhost:5173
+pnpm serve:samples    # 本地示例订阅源：http://127.0.0.1:8787/pack.json
+```
+
+检查与测试：
+
+```bash
+pnpm typecheck
+pnpm test             # 单元测试
+pnpm e2e:electron     # 启动真实 Electron 跑完整流程（导入、订阅、浮窗、拖拽、导出导入、重启）
+```
+
+打包：
+
+```bash
+pnpm dist:win         # release/ 下生成 Windows 安装包和便携版
+pnpm dist:mac         # 需要在 macOS 上执行
+```
+
+## 发布新版本
+
+1. 更新 `package.json` 的 `version`，在 `CHANGELOG.md` 顶部加一节 `## v版本号 - 日期`。
+2. 提交后打同名标签并推送：
+
+```bash
+git tag v1.0.1 && git push origin main v1.0.1
+```
+
+GitHub Actions 会在 Windows 和 macOS 上构建，把安装包连同 CHANGELOG 里对应的小节发布到 Releases。已安装的用户下次启动时会收到更新提示。
+
+## 项目结构
+
+```
+electron/        主进程、preload（文件、下载、剪贴板、自定义协议、托盘、浮窗、快捷键）
+src/core/        与界面无关的核心：数据模型、订阅清单解析、同步算法、导出导入、store
+src/platform/    平台接口 + Electron / 浏览器两套实现（Android 以后在这里加）
+src/components/  界面组件
+src/float/       桌面浮窗
+scripts/         构建、示例生成、端到端测试、发布说明
+examples/        示例订阅
+```
+
+## 许可
+
+MIT

@@ -1,0 +1,88 @@
+{
+  "name": "示例：表情合集",
+  "description": "一个订阅里包含多个表情包，每个包会成为一个分类。",
+  "version": "2026.10.22",
+  "packs": [
+    {
+      "key": "cats",
+      "name": "猫猫",
+      "tags": [
+        "猫"
+      ],
+      "stickers": [
+        {
+          "id": "cat-cat-happy",
+          "url": "images/cat-happy.png",
+          "name": "开心",
+          "tags": [
+            "开心",
+            "笑"
+          ]
+        },
+        {
+          "id": "cat-cat-sad",
+          "url": "images/cat-sad.gif",
+          "name": "哭哭",
+          "tags": [
+            "难过",
+            "哭"
+          ]
+        },
+        {
+          "id": "cat-cat-surprised",
+          "url": "images/cat-surprised.png",
+          "name": "惊讶",
+          "tags": [
+            "惊讶"
+          ]
+        },
+        {
+          "id": "cat-cat-angry",
+          "url": "images/cat-angry.png",
+          "name": "生气",
+          "tags": [
+            "生气"
+          ]
+        },
+        {
+          "id": "cat-cat-sleepy",
+          "url": "images/cat-sleepy.png",
+          "name": "困了",
+          "tags": [
+            "困",
+            "晚安"
+          ]
+        },
+        {
+          "id": "cat-cat-love",
+          "url": "images/cat-love.gif",
+          "name": "喜欢你",
+          "tags": [
+            "爱心",
+            "喜欢"
+          ]
+        },
+        {
+          "id": "cat-cat-wink",
+          "url": "images/cat-wink.png",
+          "name": "眨眼",
+          "tags": [
+            "调皮"
+          ]
+        },
+        {
+          "id": "cat-cat-neutral",
+          "url": "images/cat-neutral.png",
+          "name": "无语",
+          "tags": [
+            "无语"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "dogs",
+      "url": "dogs.json"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "name": "狗狗",
+  "tags": [
+    "狗"
+  ],
+  "stickers": [
+    {
+      "id": "dog-dog-happy",
+      "url": "images/dog-happy.gif",
+      "name": "汪汪开心",
+      "tags": [
+        "开心"
+      ]
+    },
+    {
+      "id": "dog-dog-sad",
+      "url": "images/dog-sad.png",
+      "name": "汪汪委屈",
+      "tags": [
+        "难过"
+      ]
+    },
+    {
+      "id": "dog-dog-surprised",
+      "url": "images/dog-surprised.png",
+      "name": "汪？",
+      "tags": [
+        "惊讶",
+        "问号"
+      ]
+    },
+    {
+      "id": "dog-dog-love",
+      "url": "images/dog-love.png",
+      "name": "汪汪爱你",
+      "tags": [
+        "爱心"
+      ]
+    },
+    {
+      "id": "dog-dog-sleepy",
+      "url": "images/dog-sleepy.gif",
+      "name": "汪汪睡觉",
+      "tags": [
+        "晚安"
+      ]
+    }
+  ]
+}

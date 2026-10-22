@@ -1,0 +1,126 @@
+/** 本地导入的表情 */
+export interface StickerSourceLocal {
+  type: 'local';
+}
+
+/** 来自订阅的表情 */
+export interface StickerSourceSubscription {
+  type: 'subscription';
+  subscriptionId: string;
+  /** 订阅内的包标识（单包订阅为 "root"） */
+  packKey: string;
+  /** 远端给出的 id（缺省时为图片 URL） */
+  remoteId: string;
+  /** 图片的绝对 URL */
+  url: string;
+  /** 远端提供的名称，用于判断用户是否改过名 */
+  remoteName: string;
+  /** 远端提供的标签（含包级标签），用于与用户自己加的标签区分 */
+  remoteTags: string[];
+}
+
+export type StickerSource = StickerSourceLocal | StickerSourceSubscription;
+
+export interface Sticker {
+  id: string;
+  name: string;
+  /** 相对于数据目录的文件路径，如 stickers/abc.png */
+  file: string;
+  ext: string;
+  size: number;
+  categoryId: string | null;
+  tags: string[];
+  favorite: boolean;
+  createdAt: number;
+  updatedAt: number;
+  /** 本地导入时的 sha256，用于去重 */
+  hash?: string;
+  source: StickerSource;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  createdAt: number;
+  order: number;
+  /** 父分类；一级分类没有这个字段。可以像文件夹一样任意多级 */
+  parentId?: string;
+  /** 由订阅创建的分类会记录来源 */
+  subscriptionId?: string;
+  packKey?: string;
+  /** 远端的包名，用于判断用户是否重命名过 */
+  remoteName?: string;
+}
+
+export interface Subscription {
+  id: string;
+  url: string;
+  name: string;
+  description?: string;
+  homepage?: string;
+  remoteVersion?: string;
+  addedAt: number;
+  lastSyncAt?: number;
+  lastSuccessAt?: number;
+  lastError?: string;
+  stickerCount: number;
+  /** 同步时删除远端已移除的表情 */
+  deleteRemoved: boolean;
+  /** 启动时自动同步 */
+  autoSync: boolean;
+  /** 用户删除过的订阅表情（包 + 远端 id），同步时不再拉回 */
+  hiddenKeys?: string[];
+}
+
+export type GridSize = 'small' | 'medium' | 'large';
+export type Theme = 'system' | 'light' | 'dark';
+export type CopyMode = 'auto' | 'file' | 'image';
+
+export interface Settings {
+  theme: Theme;
+  gridSize: GridSize;
+  autoSyncOnStart: boolean;
+  animateInGrid: boolean;
+  copyMode: CopyMode;
+  /** 浮窗全局快捷键（Electron accelerator 写法），空字符串表示关闭 */
+  floatHotkey: string;
+  /** 关闭主窗口时最小化到托盘（快捷键和浮窗继续可用） */
+  closeToTray: boolean;
+  /** 网格里在表情下方显示名称 */
+  showNames: boolean;
+  /** 启动时检查新版本 */
+  checkUpdatesOnStart: boolean;
+  /** 用户选择“跳过这个版本”的版本号 */
+  skippedVersion: string;
+}
+
+export interface Library {
+  version: 1;
+  categories: Category[];
+  stickers: Sticker[];
+  subscriptions: Subscription[];
+  settings: Settings;
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  theme: 'system',
+  gridSize: 'medium',
+  autoSyncOnStart: true,
+  animateInGrid: true,
+  copyMode: 'auto',
+  floatHotkey: 'Alt+Shift+E',
+  closeToTray: true,
+  showNames: true,
+  checkUpdatesOnStart: true,
+  skippedVersion: '',
+};
+
+export function emptyLibrary(): Library {
+  return {
+    version: 1,
+    categories: [],
+    stickers: [],
+    subscriptions: [],
+    settings: { ...DEFAULT_SETTINGS },
+  };
+}

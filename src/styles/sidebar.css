@@ -1,0 +1,225 @@
+/* ---- 侧栏 ---- */
+.sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 8px 8px 24px;
+  min-height: 0;
+}
+
+.side-section {
+  margin-top: 14px;
+}
+
+.side-section:first-child {
+  margin-top: 2px;
+}
+
+.side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.side-head .btn {
+  height: 22px;
+  width: 22px;
+}
+
+.side-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--ink);
+}
+
+.side-item:hover {
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.side-item.active {
+  background: var(--tile);
+  box-shadow: var(--shadow-sm);
+  font-weight: 600;
+}
+
+.side-item .label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-item .count {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.side-item.active .count {
+  color: var(--ink-2);
+}
+
+.side-item .icon {
+  color: var(--ink-2);
+  flex: none;
+}
+
+.side-item.active .icon.star {
+  color: var(--accent);
+  fill: var(--accent);
+}
+
+.side-item .sync-progress {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.side-empty {
+  padding: 4px 10px 6px;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 标签云 */
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.14);
+  color: var(--ink);
+  font-size: 12px;
+  max-width: 100%;
+}
+
+.chip:hover {
+  background: rgba(127, 127, 127, 0.24);
+}
+
+.chip.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.chip .count {
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+.chip .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip .remove {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  margin-right: -4px;
+}
+
+.chip .remove:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* 抽屉模式（窄窗口 / 以后的手机） */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 30;
+}
+
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'top'
+      'main'
+      'bar';
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(300px, 84vw);
+    z-index: 31;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: none;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: var(--shadow);
+  }
+
+  .brand .brand-text {
+    display: none;
+  }
+}
+
+/* 分类拖拽 */
+.side-item[draggable='true'] {
+  cursor: grab;
+}
+
+.side-item.dragging {
+  opacity: 0.45;
+}
+
+.side-item.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.side-item.drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.side-item.drop-into {
+  background: var(--accent-soft);
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
+
+.drop-zone {
+  margin: 4px 4px 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink-3);
+  font-size: 12px;
+  text-align: center;
+}
+
+.drop-zone.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+}

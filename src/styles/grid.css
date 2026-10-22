@@ -1,0 +1,506 @@
+/* ---- 筛选条 ---- */
+.filterbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 6px;
+  flex-wrap: wrap;
+}
+
+.filterbar h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.filterbar h2 .count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.filterbar .active-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filterbar .spacer {
+  flex: 1;
+}
+
+.select {
+  height: 28px;
+  padding: 0 26px 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--tile)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat right 7px center / 14px;
+  appearance: none;
+  font-size: 12px;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--tile);
+}
+
+.segmented button {
+  height: 26px;
+  padding: 0 9px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--line);
+}
+
+.segmented button.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+/* ---- 表情网格 ---- */
+.grid-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 16px 24px;
+  position: relative;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--cell), 1fr));
+  gap: 10px;
+}
+
+.grid[data-size='small'] {
+  --cell: 84px;
+}
+.grid[data-size='large'] {
+  --cell: 150px;
+}
+
+.card {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--radius);
+  background: var(--tile);
+  border: 1px solid var(--line);
+  padding: 6px;
+  overflow: hidden;
+  content-visibility: auto;
+  contain-intrinsic-size: var(--cell) var(--cell);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  cursor: pointer;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+  border-color: var(--line-strong);
+}
+
+.card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.card img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.card canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* 收藏角标：黄色小标签 */
+.card .fav-tab {
+  position: absolute;
+  top: -1px;
+  right: 10px;
+  width: 14px;
+  height: 18px;
+  background: var(--accent);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 70%, 0 100%);
+}
+
+/* 选择框：悬停或已选时显示 */
+.card .check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--ink-3);
+  background: var(--tile);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 0.1s;
+  color: var(--accent-ink);
+}
+
+.card:hover .check,
+.card.selected .check,
+.grid.selecting .card .check {
+  opacity: 1;
+}
+
+.card.selected .check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* 盖章反馈 */
+.card .stamp {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+
+[data-theme='dark'] .card .stamp {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.card .stamp span {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  transform: rotate(-8deg);
+  animation: stamp 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+}
+
+.card .stamp.pending span {
+  background: var(--tile);
+  color: var(--ink-2);
+  animation: none;
+  transform: none;
+}
+
+@keyframes stamp {
+  from {
+    transform: rotate(-8deg) scale(1.8);
+    opacity: 0;
+  }
+  to {
+    transform: rotate(-8deg) scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .card .stamp span,
+  .sidebar {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* ---- 空状态 ---- */
+.empty {
+  height: 100%;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--ink-2);
+  gap: 10px;
+  padding: 24px;
+}
+
+.empty .face {
+  font-size: 44px;
+  line-height: 1;
+  filter: grayscale(0.2);
+}
+
+.empty h3 {
+  margin: 4px 0 0;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.empty p {
+  margin: 0;
+  max-width: 36em;
+}
+
+.empty .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ---- 底部多选条 ---- */
+.selectionbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  flex-wrap: wrap;
+}
+
+.selectionbar .summary {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.selectionbar .spacer {
+  flex: 1;
+}
+
+/* ---- 拖入覆盖层 ---- */
+.drop-overlay {
+  position: fixed;
+  inset: 12px;
+  z-index: 60;
+  border: 3px dashed var(--accent);
+  border-radius: 16px;
+  background: var(--accent-soft);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+/* ---- 带名称的表情格 ---- */
+.card {
+  display: flex;
+  flex-direction: column;
+  aspect-ratio: auto;
+  padding: 0;
+  contain-intrinsic-size: var(--cell) calc(var(--cell) + 22px);
+}
+
+.card .thumb {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 6px;
+  min-height: 0;
+}
+
+.card .thumb img,
+.card .thumb canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.card .name {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--ink-2);
+  text-align: center;
+  padding: 0 6px 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.card .name:hover {
+  color: var(--ink);
+  text-decoration: underline dotted;
+}
+
+.card .name-input {
+  margin: 0 4px 4px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 5px;
+  border: 1px solid var(--accent);
+  background: var(--tile);
+  font-size: 11px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.card .name-input:focus {
+  outline: none;
+}
+
+.grid[data-size='small'] .card .name {
+  font-size: 10px;
+}
+
+/* ---- 框选矩形 ---- */
+.marquee {
+  position: absolute;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ---- 二级分类页签 ---- */
+.subtabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: none;
+}
+
+.subtabs::-webkit-scrollbar {
+  display: none;
+}
+
+.subtabs .chip {
+  flex: none;
+  height: 26px;
+}
+
+.subtabs .chip.ghost {
+  background: transparent;
+  border: 1px dashed var(--line-strong);
+  color: var(--ink-2);
+}
+
+.subtabs .chip.ghost:hover {
+  background: var(--line);
+}
+
+/* 侧栏里的二级分类 */
+.side-item.child {
+  padding-left: 30px;
+  height: 28px;
+  font-size: 12px;
+}
+
+.side-item .twisty {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--ink-3);
+  margin-right: -4px;
+  transition: transform 0.12s;
+}
+
+.side-item .twisty:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.side-item .twisty.collapsed {
+  transform: rotate(-90deg);
+}
+
+.pick-list button.child {
+  padding-left: 26px;
+}
+
+/* 名称 / 分类 一行显示；分类只显示最末一级 */
+.card .name-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.3;
+  padding: 0 6px 5px;
+  white-space: nowrap;
+}
+
+.card .name-row .name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0;
+}
+
+.card .name-row .sep {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.card .name-row .cat {
+  flex: 0 1 auto;
+  min-width: 2em;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.card .name-row .cat:hover {
+  color: var(--ink);
+  text-decoration: underline dotted;
+}
+
+.card .name-row .cat.none {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/* 一级分类顶部的“未分类”页签 */
+.subtabs .chip.own:not(.active) {
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+/* 分类路径（面包屑）：祖先分类可点击回到上级 */
+.filterbar h2 .crumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.filterbar h2 .crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border-radius: 5px;
+  color: var(--ink-2);
+}
+
+.filterbar h2 .crumb:hover {
+  background: var(--line);
+  color: var(--ink);
+}

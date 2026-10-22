@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev", "--port", "5173", "--strictPort"],
+      "port": 5173
+    },
+    {
+      "name": "samples",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/serve-samples.mjs", "8787"],
+      "port": 8787
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+export interface PickedFile {
+  name: string;
+  bytes: Uint8Array;
+}
+
+/** 文件夹里的一个文件；rel 是相对所选文件夹根的路径（不含文件夹自己的名字），用 / 分隔 */
+export interface FolderFile {
+  name: string;
+  rel: string;
+  size: number;
+  read: () => Promise<Uint8Array>;
+}
+
+export interface PickedFolder {
+  name: string;
+  files: FolderFile[];
+}
+
+export interface PickedFolders {
+  folders: PickedFolder[];
+  /** 所选文件夹共同的上级目录名（用作“新建一级分类”的默认名） */
+  parentName?: string;
+}
+
+export interface FetchTextResult {
+  ok: boolean;
+  status: number;
+  text: string;
+  finalUrl: string;
+}
+
+export interface DownloadResult {
+  size: number;
+  contentType: string | null;
+}
+
+export type PlatformKind = 'electron' | 'web' | 'capacitor';
+export type OsKind = 'windows' | 'mac' | 'linux' | 'android' | 'ios' | 'unknown';
+/** 当前渲染进程是主窗口还是桌面浮窗 */
+export type WindowRole = 'main' | 'float';
+
+export interface UsageEntry {
+  count: number;
+  last: number;
+}
+/** 表情使用记录：id → 次数 / 最近一次时间 */
+export type UsageMap = Record<string, UsageEntry>;
+
+/** 需要主进程配合的桌面设置 */
+export interface DesktopSettings {
+  /** 浮窗全局快捷键（Electron accelerator 写法），空字符串表示关闭 */
+  floatHotkey: string;
+  /** 关闭主窗口时最小化到托盘 */
+  closeToTray: boolean;
+}
+
+export interface PlatformCapabilities {
+  /** 能把图片放进系统剪贴板 */
+  copyImage: boolean;
+  /** 能把文件放进系统剪贴板（保留动图） */
+  copyFile: boolean;
+  /** 系统分享面板（移动端） */
+  share: boolean;
+  revealInFolder: boolean;
+  /** 可以更改数据目录 */
+  changeLibraryDir: boolean;
+  /** 网络请求是否受浏览器跨域限制 */
+  corsRestricted: boolean;
+  /** 桌面浮窗、托盘、全局快捷键、开机自启 */
+  desktop: boolean;
+  /** 系统文件夹选择框可以一次选多个文件夹 */
+  multiFolderPick: boolean;
+}
+
+/**
+ * 平台适配层：Web 核心只依赖这个接口。
+ * Electron / 浏览器 各有一个实现，以后加 Android（Capacitor）只需再写一个实现。
+ */
+export interface Platform {
+  readonly kind: PlatformKind;
+  readonly os: OsKind;
+  /** CPU 架构（x64 / arm64 / unknown） */
+  readonly arch: string;
+  readonly windowRole: WindowRole;
+  readonly capabilities: PlatformCapabilities;
+
+  init(): Promise<void>;
+
+  // —— 数据目录内的文件（rel 为相对路径，如 stickers/x.png）——
+  readText(rel: string): Promise<string | null>;
+  writeText(rel: string, text: string): Promise<void>;
+  readBytes(rel: string): Promise<Uint8Array | null>;
+  writeBytes(rel: string, bytes: Uint8Array): Promise<void>;
+  remove(rel: string): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+  exists(rel: string): Promise<boolean>;
+
+  /** 可直接用于 <img src> 的地址；浏览器实现需要异步生成 */
+  fileUrl(rel: string): Promise<string>;
+  /** 同步快速路径；返回 undefined 表示需要走异步 */
+  fileUrlSync(rel: string): string | undefined;
+
+  // —— 网络 ——
+  fetchText(url: string, timeoutMs?: number): Promise<FetchTextResult>;
+  download(url: string, rel: string, timeoutMs?: number): Promise<DownloadResult>;
+
+  // —— 动作 ——
+  copyImagePng(png: Uint8Array): Promise<void>;
+  copyFile(rel: string): Promise<void>;
+  /** 把多个文件一起放进剪贴板 */
+  copyFiles(rels: string[]): Promise<void>;
+  /** 让用户选择位置保存一个文件（桌面端弹保存对话框，浏览器触发下载） */
+  saveFile(suggestedName: string, bytes: Uint8Array): Promise<{ saved: boolean; path?: string }>;
+  /** 选择一个或多个文件夹（取消返回 null）；只列出图片文件，内容按需读取 */
+  pickFolders(): Promise<PickedFolders | null>;
+  share(rel: string, name: string): Promise<void>;
+  revealInFolder(rel: string): Promise<void>;
+  openExternal(url: string): Promise<void>;
+
+  getLibraryPath(): Promise<string>;
+  chooseLibraryDir(): Promise<{ changed: boolean; path?: string; error?: string }>;
+  openLibraryDir(): Promise<void>;
+  relaunch(): Promise<void>;
+
+  /** 应用退出前的回调（用于把未落盘的数据写完） */
+  onBeforeQuit(cb: () => Promise<void> | void): void;
+
+  // —— 使用记录（“最近使用”）——
+  getUsage(): Promise<UsageMap>;
+  recordUsage(id: string): Promise<void>;
+  /** 任一窗口记录了使用之后，所有窗口都会收到最新的记录 */
+  onUsageChanged(cb: (usage: UsageMap) => void): void;
+
+  // —— 多窗口 / 桌面集成（非桌面平台为空实现）——
+  /** 其他窗口改写了 library.json */
+  onLibraryChanged(cb: () => void): void;
+  /** 浮窗被显示出来（用于聚焦搜索框） */
+  onFloatShown(cb: () => void): void;
+  showFloat(): Promise<void>;
+  hideFloat(): Promise<void>;
+  showMain(): Promise<void>;
+  applyDesktopSettings(s: DesktopSettings): Promise<{ hotkeyOk: boolean }>;
+  getLaunchAtLogin(): Promise<{ enabled: boolean; available: boolean }>;
+  setLaunchAtLogin(on: boolean): Promise<void>;
+}

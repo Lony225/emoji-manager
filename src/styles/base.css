@@ -1,0 +1,283 @@
+/* ---- 设计令牌：中性的"贴纸台"，表情本身是唯一的颜色；高亮黄只表示"你标记过的东西" ---- */
+:root {
+  color-scheme: light;
+  --bg: #f4f4f5;
+  --panel: #ebebee;
+  --tile: #ffffff;
+  --ink: #1f2023;
+  --ink-2: #6b6e76;
+  --ink-3: #a0a3ab;
+  --line: rgba(0, 0, 0, 0.08);
+  --line-strong: rgba(0, 0, 0, 0.16);
+  --accent: #ffd233;
+  --accent-ink: #2b2300;
+  --accent-soft: rgba(255, 210, 51, 0.3);
+  --danger: #d9483b;
+  --danger-soft: rgba(217, 72, 59, 0.12);
+  --success: #2f9e5b;
+  --shadow: 0 10px 30px rgba(20, 20, 30, 0.16), 0 2px 6px rgba(20, 20, 30, 0.08);
+  --shadow-sm: 0 2px 8px rgba(20, 20, 30, 0.12);
+  --radius: 10px;
+  --radius-sm: 7px;
+  --font: -apple-system, 'PingFang SC', 'Segoe UI', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Helvetica Neue', Arial,
+    sans-serif;
+  --cell: 108px;
+  --sidebar: 232px;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #1b1c1f;
+  --panel: #232428;
+  --tile: #2a2b30;
+  --ink: #ececee;
+  --ink-2: #a0a3ab;
+  --ink-3: #6b6e76;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --accent: #f7c948;
+  --accent-ink: #1e1900;
+  --accent-soft: rgba(247, 201, 72, 0.26);
+  --danger: #ef6b5e;
+  --danger-soft: rgba(239, 107, 94, 0.16);
+  --success: #4cc27a;
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font: 13px/1.5 var(--font);
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+input,
+button,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+a {
+  color: inherit;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 整体布局 ---- */
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  grid-template-columns: var(--sidebar) 1fr;
+  grid-template-areas:
+    'top top'
+    'side main'
+    'bar bar';
+}
+
+.topbar {
+  grid-area: top;
+}
+.sidebar {
+  grid-area: side;
+}
+.main {
+  grid-area: main;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.selectionbar {
+  grid-area: bar;
+}
+
+/* ---- 顶栏 ---- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  -webkit-app-region: no-drag;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  margin-right: 6px;
+}
+
+.brand-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.search {
+  flex: 1;
+  max-width: 520px;
+  position: relative;
+}
+
+.search .icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+.search input {
+  width: 100%;
+  height: 34px;
+  padding: 0 32px 0 34px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--tile);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* 浏览器内核自带的搜索框清除按钮会和我们自己的 × 叠在一起，去掉它 */
+.search input::-webkit-search-cancel-button,
+.search input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+.search input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.search .clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+}
+
+.search .clear:hover {
+  background: var(--line);
+}
+
+.topbar .spacer {
+  flex: 1;
+}
+
+/* ---- 按钮 ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--tile);
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--panel);
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.btn.primary:hover:not(:disabled) {
+  filter: brightness(0.96);
+  background: var(--accent);
+}
+
+.btn.danger {
+  color: var(--danger);
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+.btn.ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn.ghost:hover:not(:disabled) {
+  background: var(--line);
+}
+
+.btn.icon-only {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.btn.sm {
+  height: 26px;
+  padding: 0 9px;
+  font-size: 12px;
+}
