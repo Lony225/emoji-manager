@@ -9,6 +9,10 @@ files:
   - dist-electron/**
   - package.json
 asar: true
+# 网页“一键导入”用的协议：emojimanager://subscribe?url=…
+protocols:
+  - name: Emoji Manager
+    schemes: [emojimanager]
 npmRebuild: false
 compression: normal
 

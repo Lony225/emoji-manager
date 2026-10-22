@@ -76,6 +76,10 @@ const bridge: EmojiBridge = {
   getLaunchAtLogin: () => invoke('login:get'),
   setLaunchAtLogin: (on) => invoke('login:set', on),
   quit: () => invoke('app:quit'),
+  onDeepLink(cb) {
+    ipcRenderer.on('deeplink', () => cb());
+  },
+  takePendingDeepLink: () => invoke('deeplink:take'),
 };
 
 contextBridge.exposeInMainWorld('emojiBridge', bridge);

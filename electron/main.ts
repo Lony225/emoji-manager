@@ -28,6 +28,8 @@ const MAX_DOWNLOAD = 100 * 1024 * 1024;
 const USER_AGENT = `EmojiManager/${app.getVersion()}`;
 /** 开机自启时带上 --hidden：只显示托盘图标，不打开主窗口 */
 const START_HIDDEN = process.argv.includes('--hidden');
+/** 网页“一键导入”用的自定义协议：emojimanager://subscribe?url=<清单地址> */
+const PROTOCOL = 'emojimanager';
 const ICON_PATH = path.join(__dirname, 'icon.png');
 const PRELOAD = path.join(__dirname, 'preload.cjs');
 
@@ -770,6 +772,36 @@ function toggleFloat(): void {
   else showFloat();
 }
 
+// ---------------------------------------------------------------- 协议链接（网页一键导入）
+
+let pendingDeepLink: string | null = null;
+
+function extractDeepLink(argv: string[]): string | null {
+  return argv.find((a) => typeof a === 'string' && a.toLowerCase().startsWith(`${PROTOCOL}://`)) ?? null;
+}
+
+/** 注册为 emojimanager:// 的处理程序（安装版由安装器写注册表，这里兜底；开发模式要带上脚本路径） */
+function registerDeepLinkProtocol(): void {
+  try {
+    if (app.isPackaged) app.setAsDefaultProtocolClient(PROTOCOL);
+    else if (process.platform === 'win32' && process.argv[1]) {
+      app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+    }
+  } catch (e) {
+    console.warn('注册协议失败', e);
+  }
+}
+
+/** 收到链接：存起来，通知主窗口来取（窗口还没加载完时它加载完会自己来取） */
+function handleDeepLink(url: string): void {
+  if (!url.toLowerCase().startsWith(`${PROTOCOL}://`) || url.length > 4096) return;
+  pendingDeepLink = url;
+  showMain();
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isLoadingMainFrame()) {
+    mainWindow.webContents.send('deeplink');
+  }
+}
+
 function setupMenu(): void {
   if (process.platform !== 'darwin') {
     Menu.setApplicationMenu(null);
@@ -913,6 +945,11 @@ function registerIpc(): void {
   ipcMain.handle('app:quit', async () => {
     app.quit();
   });
+  ipcMain.handle('deeplink:take', async () => {
+    const v = pendingDeepLink;
+    pendingDeepLink = null;
+    return v;
+  });
   ipcMain.handle('app:chooseLibraryDir', async (e) => chooseLibraryDir(BrowserWindow.fromWebContents(e.sender)));
 
   ipcMain.handle('usage:get', async () => usage);
@@ -944,7 +981,17 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => showMain());
+  // 第二个实例（点了 emojimanager:// 链接或再次双击图标）：把参数交给第一个实例
+  app.on('second-instance', (_e, argv) => {
+    showMain();
+    const link = extractDeepLink(argv);
+    if (link) handleDeepLink(link);
+  });
+  // macOS 通过 open-url 事件收到协议链接
+  app.on('open-url', (e, url) => {
+    e.preventDefault();
+    handleDeepLink(url);
+  });
 
   void app.whenReady().then(async () => {
     libraryDir = resolveLibraryDir();
@@ -955,7 +1002,10 @@ if (!gotLock) {
     registerIpc();
     setupMenu();
     createTray();
+    registerDeepLinkProtocol();
     createMainWindow(!START_HIDDEN);
+    const initial = extractDeepLink(process.argv);
+    if (initial) handleDeepLink(initial);
     // 预先把浮窗建好（隐藏），快捷键一按就能立刻出现
     setTimeout(() => {
       if (!quitting && !floatWindow) createFloatWindow();

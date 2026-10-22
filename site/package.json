@@ -1,0 +1,23 @@
+{
+  "name": "emoji-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "表情包预览网站：公开浏览、点击复制、一键导入表情包管理器；管理员登录后上传",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.mjs",
+    "dev": "EMOJI_DATA_DIR=./data-dev EMOJI_ADMIN_PASSWORD=admin node server/index.mjs",
+    "set-password": "node server/set-password.mjs"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.0",
+    "@fastify/multipart": "^10.0.0",
+    "@fastify/rate-limit": "^11.0.0",
+    "@fastify/static": "^10.0.0",
+    "fastify": "^5.0.0",
+    "fflate": "^0.8.2"
+  }
+}

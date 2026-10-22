@@ -54,6 +54,8 @@ export function createElectronPlatform(bridge: EmojiBridge): Platform {
     openLibraryDir: () => bridge.openLibraryDir(),
     relaunch: () => bridge.relaunch(),
     onBeforeQuit: (cb) => bridge.onBeforeQuit(cb),
+    onDeepLink: (cb) => bridge.onDeepLink(cb),
+    takePendingDeepLink: () => bridge.takePendingDeepLink(),
 
     getUsage: () => bridge.getUsage(),
     recordUsage: (id) => bridge.recordUsage(id),

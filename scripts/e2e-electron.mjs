@@ -533,6 +533,21 @@ async function main() {
     assertEq('跳过这个版本被记住', await cdp.eval('window.__emojiStore.getState().settings.skippedVersion'), '9.9.9');
     await cdp.eval("window.__emojiStore.getState().updateSettings({ skippedVersion: '' })");
 
+    // ---- 协议链接：第二个实例带着 emojimanager://subscribe?url=… 启动 → 第一个实例弹出确认
+    console.log('\n协议链接');
+    const deepUrl = `${sampleUrl}/dogs.json`;
+    const second = spawn(process.env.E2E_ELECTRON_BIN || require('electron'), ['.', `emojimanager://subscribe?url=${encodeURIComponent(deepUrl)}`], {
+      cwd: ROOT,
+      env: { ...process.env, EMOJI_USER_DATA_DIR: dataDir },
+      stdio: 'ignore',
+    });
+    const secondExit = new Promise((resolve) => second.on('exit', resolve));
+    const deepDialog = await cdp.waitFor("document.querySelector('.dialog h3')?.textContent === '添加订阅？' ? document.querySelector('.dialog p')?.textContent : ''", 15000, '协议链接确认对话框').catch(() => '');
+    check('第二个实例把链接交给第一个实例并弹出确认', deepDialog.includes(deepUrl), deepDialog.slice(0, 80));
+    check('第二个实例自己退出了', (await Promise.race([secondExit.then(() => 'exited'), sleep(8000).then(() => 'timeout')])) === 'exited');
+    await cdp.eval("Array.from(document.querySelectorAll('.dialog footer button')).find(b => b.textContent.includes('取消')).click()");
+    assertEq('取消后没有新增订阅', await cdp.eval('window.__emojiStore.getState().subscriptions.length'), 2);
+
     const totalAfterImports = await cdp.eval('window.__emojiStore.getState().stickers.length');
     const catsAfterImports = await cdp.eval('window.__emojiStore.getState().categories.length');
     const nestedBefore = await cdp.eval("window.__emojiStore.getState().categories.filter(c => c.parentId).length");

@@ -58,6 +58,10 @@ export interface EmojiBridge {
   setLaunchAtLogin(on: boolean): Promise<void>;
   /** 彻底退出（等同托盘菜单的“退出”） */
   quit(): Promise<void>;
+  /** 有新的 emojimanager:// 链接等待处理 */
+  onDeepLink(cb: () => void): void;
+  /** 取走待处理的协议链接（没有则 null） */
+  takePendingDeepLink(): Promise<string | null>;
 }
 
 declare global {

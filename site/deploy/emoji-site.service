@@ -1,0 +1,22 @@
+[Unit]
+Description=Emoji site (表情包预览网站)
+After=network.target
+
+[Service]
+Type=simple
+User=emoji
+Group=emoji
+WorkingDirectory=/var/www/emoji
+EnvironmentFile=/etc/emoji-site.env
+ExecStart=/usr/local/bin/node server/index.mjs
+Restart=always
+RestartSec=3
+# 安全加固：只允许写数据目录
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/emoji/data
+
+[Install]
+WantedBy=multi-user.target

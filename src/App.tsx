@@ -33,6 +33,7 @@ import { CategoryParentDialog } from './components/dialogs/CategoryParentDialog'
 import { UpdateDialog } from './components/dialogs/UpdateDialog';
 import { formatHotkey } from './components/HotkeyInput';
 import { runUpdateCheck } from './ui/update';
+import { installDeepLinkHandler } from './ui/deeplink';
 import { useTheme } from './ui/hooks';
 
 function isEditable(target: EventTarget | null): boolean {
@@ -219,7 +220,9 @@ export function App() {
   }, [loadError, toast]);
   // 启动几秒后静默检查一次新版本（不打扰加载和自动同步）
   useEffect(() => {
-    if (!loaded || !useLibraryStore.getState().settings.checkUpdatesOnStart) return;
+    if (!loaded) return;
+    installDeepLinkHandler();
+    if (!useLibraryStore.getState().settings.checkUpdatesOnStart) return;
     const timer = setTimeout(() => void runUpdateCheck(false), 4000);
     return () => clearTimeout(timer);
   }, [loaded]);

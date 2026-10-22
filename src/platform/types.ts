@@ -125,6 +125,10 @@ export interface Platform {
   /** 应用退出前的回调（用于把未落盘的数据写完） */
   onBeforeQuit(cb: () => Promise<void> | void): void;
 
+  // —— 协议链接：网页上的“一键导入”会打开 emojimanager://subscribe?url=… ——
+  onDeepLink(cb: () => void): void;
+  takePendingDeepLink(): Promise<string | null>;
+
   // —— 使用记录（“最近使用”）——
   getUsage(): Promise<UsageMap>;
   recordUsage(id: string): Promise<void>;

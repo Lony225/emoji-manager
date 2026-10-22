@@ -12,6 +12,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["scripts/serve-samples.mjs", "8787"],
       "port": 8787
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["site/server/index.mjs"],
+      "port": 8844
     }
   ]
 }

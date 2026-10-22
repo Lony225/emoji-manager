@@ -272,6 +272,14 @@ export function createWebPlatform(): Platform {
       return { enabled: false, available: false };
     },
     async setLaunchAtLogin() {},
+    onDeepLink() {},
+    async takePendingDeepLink() {
+      // 浏览器版：支持 ?subscribe=<清单地址> 这种打开方式
+      const u = new URL(location.href).searchParams.get('subscribe');
+      if (!u) return null;
+      history.replaceState(null, '', location.pathname);
+      return `emojimanager://subscribe?url=${encodeURIComponent(u)}`;
+    },
     onBeforeQuit(cb) {
       // 浏览器关闭时来不及等异步写入，所以切到后台时也先落盘一次
       document.addEventListener('visibilitychange', () => {
