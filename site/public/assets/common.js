@@ -70,8 +70,32 @@ export async function api(path, { method = 'GET', body, form } = {}) {
   } catch {
     /* 非 JSON */
   }
-  if (!res.ok) throw new Error(data?.error || `请求失败（HTTP ${res.status}）`);
+  if (!res.ok) throw new Error(data?.error || (res.status === 413 ? '文件太大，超过了服务器允许的上传大小' : `请求失败（HTTP ${res.status}）`));
   return data;
+}
+
+/** 带进度的上传（fetch 拿不到上传进度，用 XMLHttpRequest） */
+export function upload(path, form, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', path);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+    };
+    xhr.onerror = () => reject(new Error('网络错误，上传中断'));
+    xhr.onload = () => {
+      let data = null;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        /* 非 JSON */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(data?.error || (xhr.status === 413 ? '文件太大，超过了服务器允许的上传大小' : `请求失败（HTTP ${xhr.status}）`)));
+    };
+    xhr.send(form);
+  });
 }
 
 // ---------------------------------------------------------------- 提示

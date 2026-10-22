@@ -1,4 +1,4 @@
-import { $, h, icon, api, toast, dialog, confirmDialog, promptDialog, copyText, formatBytes } from './common.js';
+import { $, h, icon, api, upload, toast, dialog, confirmDialog, promptDialog, copyText, formatBytes } from './common.js?v=2';
 
 const state = { admin: false, site: null, packs: [], active: null, selection: new Set(), uploading: null };
 $('#brand-icon').append(icon('smile', 18));
@@ -165,14 +165,25 @@ function pickFiles(accept, multiple = true) {
 async function importZip() {
   const [file] = await pickFiles('.zip,application/zip', false);
   if (!file) return;
-  toast(`正在上传 ${file.name}…`);
   const form = new FormData();
   form.append('file', file, file.name);
+  const status = h('div', { class: 'toast' }, `正在上传 ${file.name}（${formatBytes(file.size)}）…`);
+  let box = document.querySelector('.toasts');
+  if (!box) {
+    box = h('div', { class: 'toasts' });
+    document.body.append(box);
+  }
+  box.append(status);
   try {
-    const r = await api('/api/import', { method: 'POST', form });
+    const r = await upload('/api/import', form, (loaded, total) => {
+      const pct = Math.floor((100 * loaded) / total);
+      status.textContent = pct < 100 ? `正在上传 ${file.name}：${pct}%` : `上传完成，服务器正在解包 ${file.name}…`;
+    });
+    status.remove();
     await refresh();
     toast(`已导入 ${r.added} 个表情到 ${r.names.length} 个表情包${r.packs ? `（新建 ${r.packs} 个）` : ''}${r.skipped ? `，跳过 ${r.skipped} 个重复` : ''}${r.missing ? `，${r.missing} 个缺少图片` : ''}`, 'success');
   } catch (e) {
+    status.remove();
     toast(`导入失败：${e.message}`, 'error');
   }
 }

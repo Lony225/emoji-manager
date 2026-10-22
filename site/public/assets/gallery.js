@@ -1,4 +1,4 @@
-import { $, h, icon, api, toast, dialog, copyText, copyImage, formatBytes, RELEASES_URL } from './common.js';
+import { $, h, icon, api, toast, dialog, copyText, copyImage, formatBytes, RELEASES_URL } from './common.js?v=2';
 
 const state = { site: null, packs: [], active: 'all', query: '' };
 

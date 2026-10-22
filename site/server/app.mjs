@@ -8,12 +8,17 @@ import fastifyMultipart from '@fastify/multipart';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { Store, MAX_FILE } from './store.mjs';
 import { issueSession, verifySession, verifyPassword, LoginGuard } from './auth.mjs';
-import { buildZip, packManifest, readZip, siteManifest } from './manifest.mjs';
+import { packManifest, readZipFile, siteManifest, streamZip } from './manifest.mjs';
+import fsp from 'node:fs/promises';
+import { pipeline } from 'node:stream/promises';
+import crypto from 'node:crypto';
 import { MIME } from './images.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const COOKIE = 'emoji_admin';
+/** 导入 zip 的大小上限（落盘处理，不占内存） */
+const ZIP_MAX = 2 * 1024 * 1024 * 1024;
 
 export async function buildApp({ dataDir, initialPassword, logger = true, trustProxy = true }) {
   const store = new Store(dataDir);
@@ -46,7 +51,10 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
   app.setErrorHandler((err, _req, reply) => {
     const code = err.statusCode && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 500;
     if (code === 500) app.log.error(err);
-    reply.code(code).send({ error: code === 500 ? '服务器出错了' : err.message });
+    let message = err.message;
+    if (code === 413) message = '文件太大：单张图片最多 20 MB，压缩包最多 2 GB';
+    else if (code === 500) message = '服务器出错了';
+    reply.code(code).send({ error: message });
   });
 
   const isAdmin = (req) => verifySession(store.config.secret, req.cookies[COOKIE]);
@@ -81,17 +89,16 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
     reply.header('access-control-allow-origin', '*').header('cache-control', 'no-cache');
     return packManifest(store, p);
   });
-  const sendZip = async (reply, packs, name) => {
-    const zip = await buildZip(store, packs, name);
+  // async 处理函数里用 reply.send(流) 时必须把 reply 返回：否则 Fastify 会在流写出第一块之前就把响应按空内容结束
+  const sendZip = (reply, packs, name) =>
     reply
       .header('content-type', 'application/zip')
       .header('content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}.zip`)
-      .send(zip);
-  };
+      .send(streamZip(store, packs, name));
   app.get('/packs/:id.zip', async (req, reply) => {
     const p = store.getPack(req.params.id);
     if (!p) throw Object.assign(new Error('表情包不存在'), { statusCode: 404 });
-    await sendZip(reply, [p], p.name);
+    return sendZip(reply, [p], p.name);
   });
   app.get('/all.zip', async (_req, reply) => sendZip(reply, store.sortedPacks(), store.index.site.title));
 
@@ -146,7 +153,7 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
       const pack = store.getPack(req.params.id);
       if (!pack) throw Object.assign(new Error('表情包不存在'), { statusCode: 404 });
       const files = [];
-      for await (const part of req.parts()) {
+      for await (const part of req.parts({ limits: { fileSize: MAX_FILE, files: 300 } })) {
         if (part.type !== 'file') continue;
         const bytes = await part.toBuffer();
         if (part.file.truncated) {
@@ -164,33 +171,52 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
       moved: await store.moveStickers(Array.isArray(req.body?.ids) ? req.body.ids : [], String(req.body?.packId ?? '')),
     }));
 
-    /** 导入桌面应用导出的 zip：每个包按名字找或建 */
+    /** 导入桌面应用导出的 zip：先流式落盘再逐条解包，大包也不占内存；每个包按名字找或建 */
     admin.post('/api/import', async (req) => {
-      let zipBytes = null;
-      for await (const part of req.parts()) {
-        if (part.type === 'file') zipBytes = await part.toBuffer();
-      }
-      if (!zipBytes) throw Object.assign(new Error('没有收到文件'), { statusCode: 400 });
-      const packs = readZip(zipBytes);
-      const summary = { packs: 0, added: 0, skipped: 0, failed: 0, missing: 0, names: [] };
-      for (const p of packs) {
-        const fullName = p.group ? `${p.group} / ${p.name}` : p.name;
-        let pack = store.index.packs.find((x) => x.name === fullName);
-        if (!pack) {
-          pack = await store.createPack({ name: fullName, description: p.description, tags: p.tags });
-          summary.packs++;
+      const tmpBase = path.join(store.dataDir, 'tmp');
+      await fsp.mkdir(tmpBase, { recursive: true });
+      const id = crypto.randomUUID();
+      const zipPath = path.join(tmpBase, `${id}.zip`);
+      const tmpDir = path.join(tmpBase, id);
+      let received = false;
+      try {
+        for await (const part of req.parts({ limits: { fileSize: ZIP_MAX, files: 1 } })) {
+          if (part.type !== 'file') continue;
+          await pipeline(part.file, fs.createWriteStream(zipPath));
+          received = true;
         }
-        const r = await store.addStickers(
-          pack.id,
-          p.stickers.map((s) => ({ name: s.fileName, bytes: s.bytes, displayName: s.name, tags: s.tags })),
-        );
-        summary.added += r.added;
-        summary.skipped += r.skipped;
-        summary.failed += r.failed;
-        summary.missing += p.missing;
-        summary.names.push(fullName);
+        if (!received) throw Object.assign(new Error('没有收到文件'), { statusCode: 400 });
+        const { packs, cleanup } = await readZipFile(zipPath, tmpDir);
+        try {
+          const summary = { packs: 0, added: 0, skipped: 0, failed: 0, missing: 0, names: [] };
+          for (const p of packs) {
+            const fullName = p.group ? `${p.group} / ${p.name}` : p.name;
+            let pack = store.index.packs.find((x) => x.name === fullName);
+            if (!pack) {
+              pack = await store.createPack({ name: fullName, description: p.description, tags: p.tags });
+              summary.packs++;
+            }
+            // 每批 50 张：图片从临时文件读，内存里只有这一批
+            for (let i = 0; i < p.stickers.length; i += 50) {
+              const batch = [];
+              for (const st of p.stickers.slice(i, i + 50)) {
+                batch.push({ name: st.fileName, bytes: await fsp.readFile(st.path), displayName: st.name, tags: st.tags });
+              }
+              const r = await store.addStickers(pack.id, batch);
+              summary.added += r.added;
+              summary.skipped += r.skipped;
+              summary.failed += r.failed;
+            }
+            summary.missing += p.missing;
+            summary.names.push(fullName);
+          }
+          return summary;
+        } finally {
+          await cleanup();
+        }
+      } finally {
+        await fsp.rm(zipPath, { force: true }).catch(() => undefined);
       }
-      return summary;
     });
   });
 
