@@ -212,9 +212,36 @@ export async function syncSubscription(
     rootCat = ensureCategory('root', manifest.name, undefined, multiPack);
     if (rootPack) packCategory.set('root', rootCat);
   }
+  // 包上的 group 是相对订阅分类的父分类路径（“一级 / 二级”）：按它在订阅分类下逐级放；
+  // 路径指向的如果正好是另一个包，就放到那个包的分类下，否则建一个只起容器作用的分类
+  const groupPath = (g: string | undefined) =>
+    (g ?? '')
+      .split(' / ')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(' / ');
+  const pathOf = (p: RemotePack) => {
+    const g = groupPath(p.group);
+    return g ? `${g} / ${p.name}` : p.name;
+  };
+  const packByPath = new Map<string, RemotePack>();
+  for (const p of packs) if (p.key !== 'root' && !packByPath.has(pathOf(p))) packByPath.set(pathOf(p), p);
+  const pathCategory = new Map<string, Category>();
+  const ensurePath = (path: string): Category => {
+    const hit = pathCategory.get(path);
+    if (hit) return hit;
+    const segs = path.split(' / ');
+    const parent = segs.length > 1 ? ensurePath(segs.slice(0, -1).join(' / ')) : rootCat!;
+    const pack = packByPath.get(path);
+    const cat = pack
+      ? ensureCategory(pack.key, pack.name, parent.id, true)
+      : ensureCategory(`group:${path}`, segs[segs.length - 1], parent.id, true);
+    pathCategory.set(path, cat);
+    return cat;
+  };
   for (const pack of packs) {
     if (pack.key === 'root') continue;
-    packCategory.set(pack.key, ensureCategory(pack.key, pack.name, rootCat!.id, true));
+    packCategory.set(pack.key, ensurePath(pathOf(pack)));
   }
   apply(catOps);
   const validCatIds = new Set([...snap.categories.map((c) => c.id), ...usedCats]);

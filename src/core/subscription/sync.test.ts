@@ -266,6 +266,43 @@ describe('syncSubscription', () => {
     expect(h.state.stickers.find((s) => s.source.type === 'subscription' && s.source.remoteId === 'c')!.categoryId).toBe(extra.id);
   });
 
+  it('多包：包上的 group 在订阅分类下逐级建出子分类，指向另一个包时就挂在那个包下', async () => {
+    const root = JSON.stringify({
+      name: '合集',
+      stickers: [{ id: 'r1', url: 'r.png' }],
+      packs: [
+        { key: 'dogs', name: '狗狗', group: '动物', stickers: [{ id: 'd1', url: 'dog/1.png' }] },
+        { key: 'shiba', name: '柴犬', group: '动物 / 狗狗', stickers: [{ id: 's1', url: 'shiba/1.png' }] },
+        { key: 'misc', name: '其他', stickers: [{ id: 'm1', url: 'misc/1.png' }] },
+      ],
+    });
+    const h = harness({
+      [MANIFEST]: root,
+      'https://h.test/p/r.png': PNG,
+      'https://h.test/p/dog/1.png': PNG,
+      'https://h.test/p/shiba/1.png': PNG,
+      'https://h.test/p/misc/1.png': PNG,
+    });
+    const r = await h.run();
+    expect(r).toMatchObject({ added: 4, failed: 0, packs: 4 });
+    const byKey = (k: string) => h.state.categories.find((c) => c.packKey === k)!;
+    const rootCat = byKey('root');
+    const animals = byKey('group:动物');
+    expect(animals).toMatchObject({ name: '动物', parentId: rootCat.id, subscriptionId: 'sub1' });
+    expect(byKey('dogs').parentId).toBe(animals.id);
+    expect(byKey('shiba').parentId).toBe(byKey('dogs').id); // “动物 / 狗狗”就是狗狗这个包，不另建分类
+    expect(byKey('misc').parentId).toBe(rootCat.id);
+    expect(h.state.categories.filter((c) => c.name === '狗狗')).toHaveLength(1);
+    const st = (remoteId: string) => h.state.stickers.find((s) => s.source.type === 'subscription' && s.source.remoteId === remoteId)!;
+    expect(st('r1').categoryId).toBe(rootCat.id);
+    expect(st('d1').categoryId).toBe(byKey('dogs').id);
+    expect(st('s1').categoryId).toBe(byKey('shiba').id);
+    // 再同步：分类不会重复建
+    const n = h.state.categories.length;
+    await h.run();
+    expect(h.state.categories).toHaveLength(n);
+  });
+
   it('同名的本地分类会被订阅采用', async () => {
     const h = harness(
       { [MANIFEST]: v1, 'https://h.test/p/a.png': PNG, 'https://h.test/p/b.gif': PNG },

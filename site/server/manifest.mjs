@@ -6,6 +6,7 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { Unzip, UnzipInflate, Zip, ZipPassThrough, ZipDeflate, strFromU8, strToU8 } from 'fflate';
 import { extFromBytes, extFromName, normalizeTags } from './images.mjs';
+import { packPath } from './store.mjs';
 
 function stickerEntry(s, packId) {
   return { id: s.id, url: `/images/${packId}/${s.file}`, name: s.name, tags: s.tags };
@@ -32,6 +33,42 @@ export function siteManifest(store) {
     packs: store.sortedPacks().map((p) => ({
       key: p.id,
       name: p.name,
+      group: p.group || undefined,
+      description: p.description || undefined,
+      tags: p.tags,
+      stickers: p.stickers.map((s) => stickerEntry(s, p.id)),
+    })),
+  };
+}
+
+/** 把绝对分组路径改成相对 base 的（base 为空就原样返回；正好等于 base 则为空） */
+function relGroup(group, base) {
+  const g = group || '';
+  if (!base) return g;
+  if (g === base) return '';
+  return g.startsWith(`${base} / `) ? g.slice(base.length + 3) : g;
+}
+
+/**
+ * 某个分组（分类路径）的清单：路径本身的包作为根级表情，其余后代作为子包，
+ * 子包的 group 相对这个路径，应用订阅后会还原成同样的分类层级。没有任何包时返回 null。
+ */
+export function groupManifest(store, pathStr) {
+  const packs = store.packsUnder(pathStr);
+  if (packs.length === 0) return null;
+  const own = packs.find((p) => packPath(p) === pathStr);
+  const rest = packs.filter((p) => p !== own);
+  const latest = Math.max(...packs.map((p) => p.updatedAt));
+  return {
+    name: pathStr.split(' / ').pop(),
+    description: own?.description || undefined,
+    version: new Date(latest).toISOString().slice(0, 10),
+    tags: own?.tags ?? [],
+    stickers: own ? own.stickers.map((s) => stickerEntry(s, own.id)) : undefined,
+    packs: rest.map((p) => ({
+      key: p.id,
+      name: p.name,
+      group: relGroup(p.group, pathStr) || undefined,
       description: p.description || undefined,
       tags: p.tags,
       stickers: p.stickers.map((s) => stickerEntry(s, p.id)),
@@ -59,9 +96,10 @@ function unique(base, used) {
 
 /**
  * 把若干表情包打成 zip，以流的形式返回（桌面应用“导入表情包压缩包”可直接读）。
- * 图片逐个从磁盘读，内存里只有当前这一张。
+ * 图片逐个从磁盘读，内存里只有当前这一张。baseGroup：清单里的 group 相对它来写，
+ * 这样下载某个分组时，它自己是一级分类、子表情包按层级挂在下面。
  */
-export function streamZip(store, packs, name) {
+export function streamZip(store, packs, name, baseGroup = '') {
   const out = new PassThrough();
   const zip = new Zip((err, chunk, final) => {
     if (err) {
@@ -112,7 +150,7 @@ export function streamZip(store, packs, name) {
         if (out.writableNeedDrain && !out.destroyed) await drained();
         else await new Promise((r) => setImmediate(r));
       }
-      manifestPacks.push({ key: p.id, name: p.name, description: p.description || undefined, tags: p.tags, stickers });
+      manifestPacks.push({ key: p.id, name: p.name, group: relGroup(p.group, baseGroup) || undefined, description: p.description || undefined, tags: p.tags, stickers });
     }
     if (out.destroyed) {
       zip.terminate();

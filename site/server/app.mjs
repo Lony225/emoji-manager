@@ -6,9 +6,9 @@ import fastifyStatic from '@fastify/static';
 import fastifyCookie from '@fastify/cookie';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyRateLimit from '@fastify/rate-limit';
-import { Store, MAX_FILE } from './store.mjs';
+import { Store, MAX_FILE, normalizeGroup, packPath } from './store.mjs';
 import { issueSession, verifySession, verifyPassword, LoginGuard } from './auth.mjs';
-import { packManifest, readZipFile, siteManifest, streamZip } from './manifest.mjs';
+import { groupManifest, packManifest, readZipFile, siteManifest, streamZip } from './manifest.mjs';
 import fsp from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import crypto from 'node:crypto';
@@ -64,6 +64,8 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
   const publicPack = (p) => ({
     id: p.id,
     name: p.name,
+    group: p.group,
+    path: packPath(p),
     description: p.description,
     tags: p.tags,
     count: p.stickers.length,
@@ -90,17 +92,52 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
     return packManifest(store, p);
   });
   // async 处理函数里用 reply.send(流) 时必须把 reply 返回：否则 Fastify 会在流写出第一块之前就把响应按空内容结束
-  const sendZip = (reply, packs, name) =>
+  const sendZip = (reply, packs, name, baseGroup = '') =>
     reply
       .header('content-type', 'application/zip')
       .header('content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}.zip`)
-      .send(streamZip(store, packs, name));
+      .send(streamZip(store, packs, name, baseGroup));
   app.get('/packs/:id.zip', async (req, reply) => {
     const p = store.getPack(req.params.id);
     if (!p) throw Object.assign(new Error('表情包不存在'), { statusCode: 404 });
-    return sendZip(reply, [p], p.name);
+    return sendZip(reply, [p], p.name, p.group);
   });
   app.get('/all.zip', async (_req, reply) => sendZip(reply, store.sortedPacks(), store.index.site.title));
+
+  /**
+   * 分组级地址：/groups/<一级>/<二级>/manifest.json 订阅、/groups/<一级>/<二级>.zip 下载，
+   * 包含这个路径上的包和它下面的所有表情包。按原始 URL 自己切段，段里编码过的 / 不会被当成分隔符。
+   */
+  const parseGroupUrl = (req) => {
+    const raw = req.raw.url.split('?')[0].replace(/^\/groups\//, '');
+    const segs = raw.split('/').map((s) => {
+      try {
+        return decodeURIComponent(s).trim();
+      } catch {
+        return s.trim();
+      }
+    });
+    const last = segs.pop() ?? '';
+    let kind = null;
+    if (last === 'manifest.json') kind = 'manifest';
+    else if (last.endsWith('.zip')) {
+      kind = 'zip';
+      segs.push(last.slice(0, -4).trim());
+    }
+    return { kind, pathStr: segs.filter(Boolean).join(' / ') };
+  };
+  app.get('/groups/*', async (req, reply) => {
+    const { kind, pathStr } = parseGroupUrl(req);
+    if (!kind || !pathStr) throw Object.assign(new Error('不存在'), { statusCode: 404 });
+    const packs = store.packsUnder(pathStr);
+    if (packs.length === 0) throw Object.assign(new Error('分组不存在'), { statusCode: 404 });
+    if (kind === 'manifest') {
+      reply.header('access-control-allow-origin', '*').header('cache-control', 'no-cache');
+      return groupManifest(store, pathStr);
+    }
+    const segs = pathStr.split(' / ');
+    return sendZip(reply, packs, segs[segs.length - 1], segs.slice(0, -1).join(' / '));
+  });
 
   // ---------------------------------------------------------------- 登录
   app.post('/api/login', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
@@ -171,7 +208,7 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
       moved: await store.moveStickers(Array.isArray(req.body?.ids) ? req.body.ids : [], String(req.body?.packId ?? '')),
     }));
 
-    /** 导入桌面应用导出的 zip：先流式落盘再逐条解包，大包也不占内存；每个包按名字找或建 */
+    /** 导入桌面应用导出的 zip：先流式落盘再逐条解包，大包也不占内存；每个包按“分组 + 名字”找或建，分类层级原样保留 */
     admin.post('/api/import', async (req) => {
       const tmpBase = path.join(store.dataDir, 'tmp');
       await fsp.mkdir(tmpBase, { recursive: true });
@@ -190,10 +227,10 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
         try {
           const summary = { packs: 0, added: 0, skipped: 0, failed: 0, missing: 0, names: [] };
           for (const p of packs) {
-            const fullName = p.group ? `${p.group} / ${p.name}` : p.name;
-            let pack = store.index.packs.find((x) => x.name === fullName);
+            const group = normalizeGroup(p.group);
+            let pack = store.index.packs.find((x) => x.group === group && x.name === p.name);
             if (!pack) {
-              pack = await store.createPack({ name: fullName, description: p.description, tags: p.tags });
+              pack = await store.createPack({ name: p.name, description: p.description, tags: p.tags, group });
               summary.packs++;
             }
             // 每批 50 张：图片从临时文件读，内存里只有这一批
@@ -208,7 +245,7 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
               summary.failed += r.failed;
             }
             summary.missing += p.missing;
-            summary.names.push(fullName);
+            summary.names.push(packPath(pack));
           }
           return summary;
         } finally {

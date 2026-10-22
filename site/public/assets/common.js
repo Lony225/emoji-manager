@@ -20,6 +20,8 @@ export function h(tag, attrs = {}, ...children) {
 }
 
 export const icons = {
+  chevronDown: 'M6 9l6 6 6-6',
+  image: 'M4 5h16v14H4zM9 10.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM4 16l5-5 4 4 2-2 5 5',
   search: 'M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14zm9 16-4-4',
   copy: 'M9 9h11v11H9zM4 15V4h11',
   download: 'M12 4v12M7 11l5 5 5-5M5 20h14',
@@ -249,3 +251,38 @@ export function formatBytes(n) {
 }
 
 export const RELEASES_URL = 'https://github.com/Lony225/emoji-manager/releases/latest';
+
+// ---------------------------------------------------------------- 分组树（表情包的 path = "分组 / 名称"，首页和后台共用）
+/** 把扁平的表情包列表按路径搭成树。节点：{ path, name, pack, children, count }，count 是节点下的表情总数 */
+export function buildTree(packs) {
+  const root = { path: '', name: '', pack: null, children: [], count: 0 };
+  const byPath = new Map([['', root]]);
+  const ensure = (path) => {
+    let node = byPath.get(path);
+    if (node) return node;
+    const segs = path.split(' / ');
+    const parent = ensure(segs.slice(0, -1).join(' / '));
+    node = { path, name: segs[segs.length - 1], pack: null, children: [], count: 0 };
+    parent.children.push(node);
+    byPath.set(path, node);
+    return node;
+  };
+  for (const p of packs) ensure(p.path).pack = p;
+  const tally = (n) => (n.count = (n.pack ? n.pack.stickers.length : 0) + n.children.reduce((s, c) => s + tally(c), 0));
+  tally(root);
+  return { root, byPath };
+}
+
+/** 节点下的表情包数量（含它自己） */
+export function countPacks(node) {
+  return (node.pack ? 1 : 0) + node.children.reduce((s, c) => s + countPacks(c), 0);
+}
+
+const encodePath = (path) => path.split(' / ').map(encodeURIComponent).join('/');
+/** 分组的订阅地址：/groups/一级/二级/manifest.json */
+export function groupManifestUrl(path) {
+  return `${location.origin}/groups/${encodePath(path)}/manifest.json`;
+}
+export function groupZipUrl(path) {
+  return `/groups/${encodePath(path)}.zip`;
+}

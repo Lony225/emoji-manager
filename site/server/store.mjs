@@ -25,6 +25,30 @@ function cleanName(s, fallback) {
   return v || fallback;
 }
 
+/** 分组路径规范化：按 / 切开、去空白，用「 / 」连接；最多 8 级、每级 80 字 */
+export function normalizeGroup(s) {
+  return String(s ?? '')
+    .split('/')
+    .map((x) => x.trim().slice(0, 80))
+    .filter(Boolean)
+    .slice(0, 8)
+    .join(' / ');
+}
+
+/** 表情包的完整路径："分组 / 名称"，没有分组就是名称 */
+export function packPath(p) {
+  return p.group ? `${p.group} / ${p.name}` : p.name;
+}
+
+/** 读旧数据：没有 group 字段时，名字里的「 / 」是早期导入时拼进去的分组，拆回去 */
+function splitLegacyName(p) {
+  const name = cleanName(p.name, '表情包');
+  if (typeof p.group === 'string') return { name, group: normalizeGroup(p.group) };
+  const segs = name.split(' / ').map((s) => s.trim()).filter(Boolean);
+  if (segs.length < 2) return { name, group: '' };
+  return { name: segs[segs.length - 1], group: segs.slice(0, -1).join(' / ') };
+}
+
 export class Store {
   constructor(dataDir) {
     this.dataDir = path.resolve(dataDir);
@@ -48,7 +72,7 @@ export class Store {
             .filter((p) => p && typeof p.id === 'string')
             .map((p, i) => ({
               id: p.id,
-              name: cleanName(p.name, '表情包'),
+              ...splitLegacyName(p),
               description: typeof p.description === 'string' ? p.description.slice(0, 300) : '',
               tags: normalizeTags(p.tags),
               order: typeof p.order === 'number' ? p.order : i,
@@ -116,6 +140,15 @@ export class Store {
     return this.index.packs.find((p) => p.id === id);
   }
 
+  /** 某个路径下的所有表情包：路径本身的包（如果有）加上所有后代，按顺序 */
+  packsUnder(pathStr) {
+    const prefix = `${pathStr} / `;
+    return this.sortedPacks().filter((p) => {
+      const fp = packPath(p);
+      return fp === pathStr || fp.startsWith(prefix);
+    });
+  }
+
   findSticker(id) {
     for (const p of this.index.packs) {
       const s = p.stickers.find((x) => x.id === id);
@@ -132,12 +165,13 @@ export class Store {
 
   // ---------------------------------------------------------------- 表情包
 
-  createPack({ name, description, tags }) {
+  createPack({ name, description, tags, group }) {
     return this.mutate((idx) => {
       const order = idx.packs.reduce((m, p) => Math.max(m, p.order), -1) + 1;
       const pack = {
         id: newId(),
         name: cleanName(name, '新表情包'),
+        group: normalizeGroup(group),
         description: typeof description === 'string' ? description.trim().slice(0, 300) : '',
         tags: normalizeTags(tags),
         order,
@@ -155,6 +189,7 @@ export class Store {
       const p = idx.packs.find((x) => x.id === id);
       if (!p) throw Object.assign(new Error('表情包不存在'), { statusCode: 404 });
       if (patch.name !== undefined) p.name = cleanName(patch.name, p.name);
+      if (patch.group !== undefined) p.group = normalizeGroup(patch.group);
       if (patch.description !== undefined) p.description = String(patch.description ?? '').trim().slice(0, 300);
       if (patch.tags !== undefined) p.tags = normalizeTags(patch.tags);
       p.updatedAt = Date.now();
@@ -162,14 +197,18 @@ export class Store {
     });
   }
 
+  /** 在同一分组的兄弟之间上下移动 */
   movePack(id, direction) {
     return this.mutate((idx) => {
       const sorted = [...idx.packs].sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
-      const i = sorted.findIndex((p) => p.id === id);
-      const j = i + direction;
-      if (i < 0 || j < 0 || j >= sorted.length) return;
-      [sorted[i], sorted[j]] = [sorted[j], sorted[i]];
       sorted.forEach((p, k) => (p.order = k));
+      const me = sorted.find((p) => p.id === id);
+      if (!me) return;
+      const siblings = sorted.filter((p) => p.group === me.group);
+      const i = siblings.indexOf(me);
+      const j = i + direction;
+      if (j < 0 || j >= siblings.length) return;
+      [siblings[i].order, siblings[j].order] = [siblings[j].order, siblings[i].order];
     });
   }
 

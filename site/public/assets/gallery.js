@@ -1,11 +1,13 @@
-import { $, h, icon, api, toast, dialog, copyText, copyImage, formatBytes, RELEASES_URL } from './common.js?v=2';
+import { $, h, icon, api, toast, dialog, copyText, copyImage, formatBytes, RELEASES_URL, buildTree, countPacks, groupManifestUrl, groupZipUrl } from './common.js?v=2';
 
-const state = { site: null, packs: [], active: 'all', query: '' };
+// active：'all' 或侧栏页签选中的一级节点路径
+const state = { site: null, packs: [], tree: buildTree([]), active: 'all', query: '' };
 
 async function load() {
   try {
     state.site = await api('/api/site');
     state.packs = state.site.packs;
+    state.tree = buildTree(state.packs);
     document.title = state.site.title;
     $('#brand-title').textContent = state.site.title;
     render();
@@ -16,13 +18,12 @@ async function load() {
 $('#brand-icon').append(icon('smile', 18));
 
 // ---------------------------------------------------------------- 导入到桌面应用
-function manifestUrl(packId) {
+function packUrl(packId) {
   return packId ? `${location.origin}/packs/${packId}/manifest.json` : `${location.origin}/manifest.json`;
 }
 
 /** 用 emojimanager:// 协议唤起桌面应用；没装的话稍后给提示 */
-function importToApp(packId, label) {
-  const url = manifestUrl(packId);
+function importToApp(url, label) {
   let left = false;
   const onBlur = () => (left = true);
   window.addEventListener('blur', onBlur);
@@ -49,8 +50,8 @@ function importToApp(packId, label) {
   }, 1500);
 }
 
-function copySubscription(packId) {
-  copyText(manifestUrl(packId)).then((ok) => toast(ok ? '已复制订阅地址，到应用里「添加订阅」粘贴即可' : '复制失败', ok ? 'success' : 'error'));
+function copySubscription(url) {
+  copyText(url).then((ok) => toast(ok ? '已复制订阅地址，到应用里「添加订阅」粘贴即可' : '复制失败', ok ? 'success' : 'error'));
 }
 
 // ---------------------------------------------------------------- 表情
@@ -130,6 +131,11 @@ function matches(s, q) {
   return q.split(/\s+/).every((t) => hay.includes(t));
 }
 
+/** 节点下匹配搜索词的表情数 */
+function matchCount(node, q) {
+  return (node.pack ? node.pack.stickers.filter((s) => matches(s, q)).length : 0) + node.children.reduce((n, c) => n + matchCount(c, q), 0);
+}
+
 function packSection(p, q) {
   const list = p.stickers.filter((s) => matches(s, q));
   if (q && list.length === 0) return null;
@@ -139,13 +145,13 @@ function packSection(p, q) {
     h(
       'div',
       { class: 'pack-head' },
-      h('h2', {}, p.name),
+      h('h2', {}, p.group ? h('span', { class: 'hint' }, `${p.group} / `) : null, p.name),
       h('span', { class: 'count num' }, `${list.length}${q ? ` / ${p.stickers.length}` : ''} 个`),
       h(
         'div',
         { class: 'actions' },
-        h('button', { class: 'btn sm primary', onClick: () => importToApp(p.id, p.name), title: '用 emojimanager:// 协议打开桌面应用并添加订阅' }, icon('rocket', 14), '导入到表情包管理器'),
-        h('button', { class: 'btn sm', onClick: () => copySubscription(p.id), title: manifestUrl(p.id) }, icon('link', 14), '复制订阅地址'),
+        h('button', { class: 'btn sm primary', onClick: () => importToApp(packUrl(p.id), p.path), title: '用 emojimanager:// 协议打开桌面应用并添加订阅' }, icon('rocket', 14), '导入到表情包管理器'),
+        h('button', { class: 'btn sm', onClick: () => copySubscription(packUrl(p.id)), title: packUrl(p.id) }, icon('link', 14), '复制订阅地址'),
         h('a', { class: 'btn sm', href: `/packs/${p.id}.zip` }, icon('download', 14), '下载 zip'),
       ),
       p.description ? h('p', { class: 'desc' }, p.description) : null,
@@ -154,12 +160,47 @@ function packSection(p, q) {
   );
 }
 
+/** 分组（有子表情包的节点）的标题条：一次订阅 / 下载整个分组 */
+function groupHead(node) {
+  const url = groupManifestUrl(node.path);
+  return h(
+    'div',
+    { class: 'group-head' },
+    icon('folder', 20),
+    h(
+      'div',
+      { class: 'text' },
+      h('h2', {}, node.path),
+      h('div', { class: 'hint' }, `分组 · ${countPacks(node)} 个表情包 · ${node.count} 个表情。订阅后在应用里就是“${node.name}”分类和它下面的子分类，之后自动同步。`),
+    ),
+    h(
+      'div',
+      { class: 'actions' },
+      h('button', { class: 'btn sm primary', onClick: () => importToApp(url, node.path), title: '把这个分组连同所有子表情包导入桌面应用' }, icon('rocket', 14), '导入整个分组'),
+      h('button', { class: 'btn sm', onClick: () => copySubscription(url), title: url }, icon('link', 14), '复制订阅地址'),
+      h('a', { class: 'btn sm', href: groupZipUrl(node.path) }, icon('download', 14), '下载 zip'),
+    ),
+  );
+}
+
+/** 一个节点（及其子树）对应的页面块：分组标题条 + 它自己的表情包 + 子节点 */
+function nodeSections(node, q) {
+  if (q && matchCount(node, q) === 0) return [];
+  const out = [];
+  if (node.children.length) out.push(groupHead(node));
+  if (node.pack) out.push(packSection(node.pack, q));
+  for (const c of node.children) out.push(...nodeSections(c, q));
+  return out.filter(Boolean);
+}
+
 function render() {
   const app = $('#app');
   const q = state.query.trim().toLowerCase();
   const total = state.packs.reduce((n, p) => n + p.stickers.length, 0);
-  const shown = state.active === 'all' ? state.packs : state.packs.filter((p) => p.id === state.active);
-  const sections = shown.map((p) => packSection(p, q)).filter(Boolean);
+  const tops = state.tree.root.children;
+  if (state.active !== 'all' && !state.tree.byPath.has(state.active)) state.active = 'all';
+  const shown = state.active === 'all' ? tops : [state.tree.byPath.get(state.active)];
+  const sections = shown.flatMap((n) => nodeSections(n, q));
 
   const children = [
     h(
@@ -170,19 +211,25 @@ function render() {
       h(
         'div',
         { class: 'actions' },
-        h('button', { class: 'btn primary', onClick: () => importToApp(null, state.site.title), disabled: total === 0 }, icon('rocket'), '一键导入全部'),
-        h('button', { class: 'btn', onClick: () => copySubscription(null), disabled: total === 0 }, icon('link'), '复制订阅地址'),
+        h('button', { class: 'btn primary', onClick: () => importToApp(packUrl(null), state.site.title), disabled: total === 0 }, icon('rocket'), '一键导入全部'),
+        h('button', { class: 'btn', onClick: () => copySubscription(packUrl(null)), disabled: total === 0 }, icon('link'), '复制订阅地址'),
         h('a', { class: `btn${total ? '' : ' disabled'}`, href: '/all.zip' }, icon('download'), '下载全部 zip'),
         h('a', { class: 'btn ghost', href: RELEASES_URL, target: '_blank', rel: 'noopener' }, '获取表情包管理器'),
       ),
     ),
-    state.packs.length > 1
+    tops.length > 1
       ? h(
           'nav',
           { class: 'tabs', role: 'tablist' },
           h('button', { class: `chip${state.active === 'all' ? ' active' : ''}`, role: 'tab', onClick: () => ((state.active = 'all'), render()) }, '全部', h('span', { class: 'count num' }, total)),
-          ...state.packs.map((p) =>
-            h('button', { class: `chip${state.active === p.id ? ' active' : ''}`, role: 'tab', onClick: () => ((state.active = p.id), render()) }, p.name, h('span', { class: 'count num' }, p.stickers.length)),
+          ...tops.map((n) =>
+            h(
+              'button',
+              { class: `chip${state.active === n.path ? ' active' : ''}`, role: 'tab', title: n.children.length ? `分组：${countPacks(n)} 个表情包` : undefined, onClick: () => ((state.active = n.path), render()) },
+              n.children.length ? icon('folder', 13) : null,
+              n.name,
+              h('span', { class: 'count num' }, n.count),
+            ),
           ),
         )
       : null,
