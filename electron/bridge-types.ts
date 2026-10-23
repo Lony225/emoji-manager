@@ -58,6 +58,8 @@ export interface EmojiBridge {
   setLaunchAtLogin(on: boolean): Promise<void>;
   /** 彻底退出（等同托盘菜单的“退出”） */
   quit(): Promise<void>;
+  /** 把窗口底色设成与界面主题一致，避免深色模式下边缘露出浅色 */
+  setWindowBackground(color: string): Promise<void>;
   /** 有新的 emojimanager:// 链接等待处理 */
   onDeepLink(cb: () => void): void;
   /** 取走待处理的协议链接（没有则 null） */

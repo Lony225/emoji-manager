@@ -9,6 +9,7 @@ import {
   globalShortcut,
   ipcMain,
   nativeImage,
+  nativeTheme,
   net,
   protocol,
   screen,
@@ -604,6 +605,11 @@ function notifyTrayOnce(): void {
 
 // ---------------------------------------------------------------- 窗口
 
+/** 窗口底色：建窗口时按系统深浅色选，加载后渲染进程会按界面主题再校正一次 */
+function windowBackground(): string {
+  return nativeTheme.shouldUseDarkColors ? '#1b1c1f' : '#f4f4f5';
+}
+
 let mainWindow: BrowserWindow | null = null;
 let floatWindow: BrowserWindow | null = null;
 let closing = false;
@@ -648,7 +654,7 @@ function createMainWindow(showOnReady: boolean): BrowserWindow {
     title: '表情包管理器',
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#f4f4f5',
+    backgroundColor: windowBackground(),
     icon: process.platform === 'darwin' ? undefined : ICON_PATH,
     webPreferences: webPreferences('main'),
   });
@@ -727,7 +733,7 @@ function createFloatWindow(): BrowserWindow {
     fullscreenable: false,
     show: false,
     title: '表情浮窗',
-    backgroundColor: '#f4f4f5',
+    backgroundColor: windowBackground(),
     icon: process.platform === 'darwin' ? undefined : ICON_PATH,
     webPreferences: webPreferences('float'),
   });
@@ -941,6 +947,10 @@ function registerIpc(): void {
   ipcMain.handle('app:relaunch', async () => {
     app.relaunch();
     app.exit(0);
+  });
+  ipcMain.handle('window:bg', async (e, color: unknown) => {
+    if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color)) throw new Error('无效的颜色');
+    BrowserWindow.fromWebContents(e.sender)?.setBackgroundColor(color);
   });
   ipcMain.handle('app:quit', async () => {
     app.quit();

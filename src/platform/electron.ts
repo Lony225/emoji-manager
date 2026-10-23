@@ -69,6 +69,7 @@ export function createElectronPlatform(bridge: EmojiBridge): Platform {
     applyDesktopSettings: (s) => bridge.applyDesktopSettings(s),
     getLaunchAtLogin: () => bridge.getLaunchAtLogin(),
     setLaunchAtLogin: (on) => bridge.setLaunchAtLogin(on),
+    setWindowBackground: (color) => bridge.setWindowBackground(color),
   };
 }
 

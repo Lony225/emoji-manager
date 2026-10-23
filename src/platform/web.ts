@@ -272,6 +272,7 @@ export function createWebPlatform(): Platform {
       return { enabled: false, available: false };
     },
     async setLaunchAtLogin() {},
+    async setWindowBackground() {},
     onDeepLink() {},
     async takePendingDeepLink() {
       // 浏览器版：支持 ?subscribe=<清单地址> 这种打开方式

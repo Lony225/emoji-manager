@@ -146,4 +146,6 @@ export interface Platform {
   applyDesktopSettings(s: DesktopSettings): Promise<{ hotkeyOk: boolean }>;
   getLaunchAtLogin(): Promise<{ enabled: boolean; available: boolean }>;
   setLaunchAtLogin(on: boolean): Promise<void>;
+  /** 窗口底色跟随界面主题（桌面端），避免深色模式下窗口边缘露白 */
+  setWindowBackground(color: string): Promise<void>;
 }

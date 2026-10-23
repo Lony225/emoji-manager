@@ -76,6 +76,7 @@ const bridge: EmojiBridge = {
   getLaunchAtLogin: () => invoke('login:get'),
   setLaunchAtLogin: (on) => invoke('login:set', on),
   quit: () => invoke('app:quit'),
+  setWindowBackground: (color) => invoke('window:bg', color),
   onDeepLink(cb) {
     ipcRenderer.on('deeplink', () => cb());
   },

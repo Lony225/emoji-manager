@@ -2,13 +2,18 @@ import { useEffect, useState } from 'react';
 import { platform } from '../platform';
 import { useLibraryStore } from '../core/store';
 
-/** 把 settings.theme 应用到 <html data-theme>，"跟随系统"时监听系统变化 */
+/** 把 settings.theme 应用到 <html data-theme>，"跟随系统"时监听系统变化；窗口底色也跟着换 */
 export function useTheme(): void {
   const theme = useLibraryStore((s) => s.settings.theme);
   useEffect(() => {
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
       document.documentElement.dataset.theme = theme === 'system' ? (mql.matches ? 'dark' : 'light') : theme;
+      // 窗口本身的底色也设成一样的，否则深色模式下窗口边缘（缩放比例不是整数时）会露出一条浅色
+      if (platform.capabilities.desktop) {
+        const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+        if (/^#[0-9a-f]{6}$/i.test(bg)) void platform.setWindowBackground(bg).catch(() => undefined);
+      }
     };
     apply();
     mql.addEventListener('change', apply);
