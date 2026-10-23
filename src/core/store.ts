@@ -84,6 +84,10 @@ export interface LibraryState extends Library {
   importPackage: (bytes: Uint8Array) => Promise<PackageImportResult>;
   /** 批量命名：base 1、base 2…（只有一个时直接用 base） */
   renameStickers: (ids: string[], base: string) => void;
+  /** 批量改名：逐个指定新名字（空名字忽略） */
+  renameMany: (renames: { id: string; name: string }[]) => void;
+  /** 记录生成好的缩略图 */
+  setThumb: (id: string, thumb: string | undefined) => void;
   updateSticker: (id: string, patch: Partial<Pick<Sticker, 'name' | 'categoryId' | 'tags' | 'favorite'>>) => void;
   setCategoryFor: (ids: string[], categoryId: string | null) => void;
   addTagsTo: (ids: string[], tags: string[]) => void;
@@ -410,6 +414,25 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       return result;
     },
 
+    renameMany(renames) {
+      const map = new Map<string, string>();
+      for (const r of renames) {
+        const clean = r.name.trim().slice(0, 80);
+        if (clean) map.set(r.id, clean);
+      }
+      if (map.size === 0) return;
+      patchStickers(Array.from(map.keys()), (s) => (s.name === map.get(s.id) ? s : { ...s, name: map.get(s.id)!, updatedAt: Date.now() }));
+    },
+
+    setThumb(id, thumb) {
+      patchStickers([id], (s) => {
+        const next = { ...s };
+        if (thumb) next.thumb = thumb;
+        else delete next.thumb;
+        return next;
+      });
+    },
+
     updateSticker(id, patch) {
       const clean: Partial<Sticker> = { ...patch, updatedAt: Date.now() };
       if (patch.name !== undefined) clean.name = patch.name.trim().slice(0, 80) || '表情';
@@ -458,7 +481,10 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
                 return { ...sub, hiddenKeys: uniq([...(sub.hiddenKeys ?? []), ...extra]) };
               }),
       }));
-      for (const v of victims) await platform.remove(v.file).catch(() => undefined);
+      for (const v of victims) {
+        await platform.remove(v.file).catch(() => undefined);
+        if (v.thumb) await platform.remove(v.thumb).catch(() => undefined);
+      }
     },
 
     renameTag(from, to) {

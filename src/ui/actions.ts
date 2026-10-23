@@ -110,15 +110,7 @@ export function startRename(ids: string[]): void {
     ui().setRenaming(ids[0]);
     return;
   }
-  ui().openDialog({
-    kind: 'prompt',
-    title: `批量命名 ${ids.length} 个表情`,
-    label: '名称（会自动加上序号：名称 1、名称 2 …）',
-    value: '',
-    placeholder: '例如：猫猫',
-    confirmText: '命名',
-    onSubmit: (v) => lib().renameStickers(ids, v),
-  });
+  ui().openDialog({ kind: 'bulkRename', ids });
 }
 
 // ---------------------------------------------------------------- 导入

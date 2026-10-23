@@ -33,6 +33,10 @@ interface CardProps {
 /** 浮窗里的表情格：只负责显示和点击复制，没有多选 */
 const FloatCard = memo(function FloatCard({ sticker, focused, onCopy }: CardProps) {
   const url = useFileUrl(sticker.file);
+  const thumbUrl = useFileUrl(sticker.thumb ?? '');
+  const [hover, setHover] = useState(false);
+  // 浮窗平时显示缩略图（省资源），悬停时才播放动图
+  const src = sticker.thumb && thumbUrl && !hover ? thumbUrl : url;
   const stamp = useUiStore((s) => s.stamps[sticker.id]);
   const openMenu = useUiStore((s) => s.openMenu);
   const ref = useRef<HTMLDivElement>(null);
@@ -68,9 +72,11 @@ const FloatCard = memo(function FloatCard({ sticker, focused, onCopy }: CardProp
       aria-label={sticker.name}
       onClick={() => onCopy(sticker)}
       onContextMenu={onContextMenu}
+      onPointerEnter={() => setHover(true)}
+      onPointerLeave={() => setHover(false)}
     >
       <div className="thumb">
-        {url && <img src={url} alt={sticker.name} loading="lazy" decoding="async" draggable={false} />}
+        {url && <img src={src} alt={sticker.name} loading="lazy" decoding="async" draggable={false} />}
         {sticker.favorite && <span className="fav-tab" aria-label="已收藏" />}
         {stamp && (
           <div className={`stamp ${stamp}`}>

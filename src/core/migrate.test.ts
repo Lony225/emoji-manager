@@ -25,7 +25,7 @@ describe('migrate', () => {
         { id: 's4', file: 'dup.png' },
         { notAnId: true },
       ],
-      settings: { theme: 'purple', gridSize: 'large', copyMode: 'file', autoSyncOnStart: 'no' },
+      settings: { theme: 'purple', gridSize: 'large', copyMode: 'file', autoSyncOnStart: 'no', animateInGrid: false },
     });
     expect(lib.subscriptions[0]).toMatchObject({
       id: 'sub1',
@@ -59,7 +59,7 @@ describe('migrate', () => {
       gridSize: 'large',
       copyMode: 'file',
       autoSyncOnStart: true,
-      animateInGrid: true,
+      gridAnimation: 'hover',
       floatHotkey: 'Alt+Shift+E',
       closeToTray: true,
       showNames: true,

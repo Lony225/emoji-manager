@@ -3,8 +3,32 @@ import type { Sticker } from '../core/types';
 import { useLibraryStore } from '../core/store';
 import { useUiStore } from '../ui/uiStore';
 import { categoryLabel, descendantIds } from '../core/selectors';
+import { maybeAnimated } from '../core/images';
 import { setVisibleOrder } from '../ui/actions';
 import { StickerCard } from './StickerCard';
+
+/** 自动模式下，当前视图里动图超过这个数就不再全部播放 */
+export const AUTO_PLAY_LIMIT = 24;
+
+/** 自动模式是否因为动图太多而暂停了（筛选条上提示用） */
+let autoPausedListeners: ((v: boolean) => void)[] = [];
+let autoPausedValue = false;
+function setAutoPaused(v: boolean) {
+  if (v === autoPausedValue) return;
+  autoPausedValue = v;
+  for (const l of autoPausedListeners) l(v);
+}
+export function useAutoPaused(): boolean {
+  const [v, setV] = useState(autoPausedValue);
+  useEffect(() => {
+    autoPausedListeners.push(setV);
+    setV(autoPausedValue);
+    return () => {
+      autoPausedListeners = autoPausedListeners.filter((l) => l !== setV);
+    };
+  }, []);
+  return v;
+}
 
 interface Box {
   x: number;
@@ -31,7 +55,13 @@ export function StickerGrid({ stickers }: { stickers: Sticker[] }) {
   const stamps = useUiStore((s) => s.stamps);
   const clearSelection = useUiStore((s) => s.clearSelection);
   const gridSize = useLibraryStore((s) => s.settings.gridSize);
-  const animate = useLibraryStore((s) => s.settings.animateInGrid);
+  const gridAnimation = useLibraryStore((s) => s.settings.gridAnimation);
+  // 自动模式：当前视图里动图不多就播放，太多会卡，自动切成悬停播放
+  const animatedCount = useMemo(() => stickers.filter((s) => maybeAnimated(s.ext)).length, [stickers]);
+  const playAnimated = gridAnimation === 'always' || (gridAnimation === 'auto' && animatedCount <= AUTO_PLAY_LIMIT);
+  useEffect(() => {
+    setAutoPaused(gridAnimation === 'auto' && animatedCount > AUTO_PLAY_LIMIT);
+  }, [gridAnimation, animatedCount]);
   const categories = useLibraryStore((s) => s.categories);
   const view = useUiStore((s) => s.filter.view);
   /**
@@ -174,7 +204,7 @@ export function StickerGrid({ stickers }: { stickers: Sticker[] }) {
             sticker={s}
             selected={selection.has(s.id)}
             stamp={stamps[s.id]}
-            animate={animate}
+            playAnimated={playAnimated}
             categoryText={textFor(s)}
           />
         ))}

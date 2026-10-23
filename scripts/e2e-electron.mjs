@@ -3,7 +3,7 @@
 //       → 关闭窗口（验证关闭前落盘）→ 重新启动（验证数据持久化与图片显示）
 import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSampleServer } from './serve-samples.mjs';
@@ -562,6 +562,52 @@ async function main() {
     check('第二个实例自己退出了', (await Promise.race([secondExit.then(() => 'exited'), sleep(8000).then(() => 'timeout')])) === 'exited');
     await cdp.eval("Array.from(document.querySelectorAll('.dialog footer button')).find(b => b.textContent.includes('取消')).click()");
     assertEq('取消后没有新增订阅', await cdp.eval('window.__emojiStore.getState().subscriptions.length'), 2);
+
+
+    // ---- 缩略图与动图播放
+    console.log('\n缩略图 / 动图');
+    await cdp.eval("window.__uiStore.getState().clearSelection(); window.__uiStore.getState().setView({ kind: 'all' })");
+    const thumbsReady = await cdp.waitFor("(() => { const s = window.__emojiStore.getState(); return s.stickers.filter(x => x.ext === 'gif' && x.thumb).length >= 6 ? 1 : 0; })()", 40000, 'GIF 缩略图生成完成').catch(() => 0);
+    check('后台为动图生成了缩略图', thumbsReady === 1);
+    const thumbDir = path.join(dataDir, 'library', 'thumbs');
+    check('缩略图文件已写入 thumbs/', existsSync(thumbDir) && readdirSync(thumbDir).filter((f) => f.endsWith('.webp')).length >= 6);
+    const gifSrc = (re) => `(() => { const s = window.__emojiStore.getState(); const gif = s.stickers.find(x => x.ext === 'gif' && x.thumb); const img = document.querySelector('.card[data-id="' + gif.id + '"] img'); return img && ${re}.test(decodeURIComponent(img.getAttribute('src'))) ? 1 : 0; })()`;
+    await cdp.eval("window.__emojiStore.getState().updateSettings({ gridAnimation: 'hover' })");
+    await cdp.waitFor(gifSrc('/thumbs[/]/'), 5000, '悬停模式显示缩略图');
+    check('悬停模式下 GIF 显示缩略图', true);
+    await cdp.eval("window.__emojiStore.getState().updateSettings({ gridAnimation: 'always' })");
+    await cdp.waitFor(gifSrc('/[.]gif$/'), 5000, '全部播放模式显示原图');
+    check('全部播放模式下 GIF 显示原图', true);
+    assertEq('筛选条的动图按钮显示为暂停', await cdp.eval("document.querySelector('.anim-toggle')?.getAttribute('aria-label')"), '暂停网格里的动图');
+    await cdp.eval("document.querySelector('.anim-toggle').click()");
+    assertEq('点按钮切换为悬停播放', await cdp.eval('window.__emojiStore.getState().settings.gridAnimation'), 'hover');
+    await cdp.eval("window.__emojiStore.getState().updateSettings({ gridAnimation: 'auto' })");
+
+    // ---- 双击展开 / 收起
+    console.log('\n双击折叠');
+    const childVisible = () => cdp.eval("Array.from(document.querySelectorAll('.sidebar .side-item.child')).map(b => b.querySelector('.label').textContent).includes('可爱')");
+    const dbl = () => cdp.eval(`(() => { const row = Array.from(document.querySelectorAll('.sidebar .side-item')).find(b => b.querySelector('.label')?.textContent === '测试文件夹'); row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); })()`);
+    const beforeDbl = await childVisible();
+    await dbl();
+    await sleep(100);
+    const afterDbl = await childVisible();
+    check('双击分类收起子分类', beforeDbl === true && afterDbl === false, `${beforeDbl} -> ${afterDbl}`);
+    await dbl();
+    await sleep(100);
+    check('再次双击展开子分类', (await childVisible()) === true);
+
+    // ---- 批量改名对话框
+    console.log('\n批量改名');
+    const rnIds = await cdp.eval("window.__emojiStore.getState().stickers.filter(s => s.tags.includes('测试标签')).map(s => s.id)");
+    await cdp.eval(`window.__uiStore.getState().openDialog({ kind: 'bulkRename', ids: ${JSON.stringify(rnIds)} })`);
+    await cdp.waitFor("document.querySelector('.dialog h3')?.textContent.includes('批量改名') ? 1 : 0", 3000, '批量改名对话框');
+    assertEq('对话框列出所选表情', await cdp.eval("document.querySelectorAll('.rename-row').length"), rnIds.length);
+    await cdp.eval("Array.from(document.querySelectorAll('.dialog .segmented button')).find(b => b.textContent === '查找替换').click()");
+    await cdp.eval(`(() => { const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; const f = document.getElementById('rn-find'); setter.call(f, '批量'); f.dispatchEvent(new Event('input', { bubbles: true })); const r = document.getElementById('rn-replace'); setter.call(r, '喵'); r.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await cdp.waitFor("document.querySelectorAll('.rename-row.changed').length === 3 ? 1 : 0", 3000, '预览显示 3 个改动');
+    check('查找替换实时预览', true);
+    await cdp.eval("Array.from(document.querySelectorAll('.dialog footer button')).find(b => b.textContent.trim() === '改名').click()");
+    assertEq('批量改名生效', JSON.stringify(await cdp.eval("window.__emojiStore.getState().stickers.filter(s => s.tags.includes('测试标签')).map(s => s.name).sort()")), JSON.stringify(['喵 1', '喵 2', '喵 3']));
 
     const totalAfterImports = await cdp.eval('window.__emojiStore.getState().stickers.length');
     const catsAfterImports = await cdp.eval('window.__emojiStore.getState().categories.length');

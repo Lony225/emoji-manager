@@ -5,18 +5,20 @@ import { useLibraryStore } from '../core/store';
 import { useFileUrl } from '../ui/hooks';
 import { useUiStore, type StampState } from '../ui/uiStore';
 import { copyStickerWithFeedback, openStickerMenu, rangeSelect } from '../ui/actions';
+import { needsThumb, requestThumb } from '../ui/thumbs';
 import { Icon } from '../ui/icons';
 
 interface Props {
   sticker: Sticker;
   selected: boolean;
   stamp?: StampState;
-  animate: boolean;
+  /** 动图是否在网格里播放；false 时显示缩略图（第一帧），悬停才播放 */
+  playAnimated: boolean;
   /** 在“全部”等视图里显示所属分类（“一级 / 二级”），在分类视图里不传 */
   categoryText?: string;
 }
 
-/** 动图在网格里不播放时，画出第一帧 */
+/** 还没生成缩略图时的退路：把第一帧画到画布上 */
 function StaticFrame({ url, alt }: { url: string; alt: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -73,13 +75,20 @@ function NameEditor({ sticker }: { sticker: Sticker }) {
   );
 }
 
-export const StickerCard = memo(function StickerCard({ sticker, selected, stamp, animate, categoryText }: Props) {
+export const StickerCard = memo(function StickerCard({ sticker, selected, stamp, playAnimated, categoryText }: Props) {
   const url = useFileUrl(sticker.file);
+  const thumbUrl = useFileUrl(sticker.thumb ?? '');
+  const hasThumb = !!sticker.thumb && !!thumbUrl;
   const showNames = useLibraryStore((s) => s.settings.showNames);
   const renaming = useUiStore((s) => s.renamingId === sticker.id);
   const [hover, setHover] = useState(false);
   const longPress = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressClick = useRef(false);
+
+  // 需要缩略图但还没有：排队生成（网格里正在显示的优先）
+  useEffect(() => {
+    if (needsThumb(sticker)) requestThumb(sticker.id);
+  }, [sticker]);
 
   const menuIds = () => {
     const sel = useUiStore.getState().selection;
@@ -138,7 +147,11 @@ export const StickerCard = memo(function StickerCard({ sticker, selected, stamp,
     }
   };
 
-  const showStatic = !animate && maybeAnimated(sticker.ext) && !hover;
+  const animated = maybeAnimated(sticker.ext);
+  // 动图：播放时用原图；否则用缩略图（没有缩略图就画第一帧）。静态图：有缩略图就用缩略图（大图更省）
+  const playNow = animated && (playAnimated || hover);
+  const useThumb = hasThumb && !playNow;
+  const showStatic = animated && !playNow && !hasThumb;
   const titleLines = [sticker.name];
   if (categoryText) titleLines.push(`分类：${categoryText}`);
   if (sticker.tags.length) titleLines.push(sticker.tags.map((t) => '#' + t).join(' '));
@@ -185,7 +198,7 @@ export const StickerCard = memo(function StickerCard({ sticker, selected, stamp,
           showStatic ? (
             <StaticFrame url={url} alt={sticker.name} />
           ) : (
-            <img src={url} alt={sticker.name} loading="lazy" decoding="async" draggable={false} />
+            <img src={useThumb ? thumbUrl : url} alt={sticker.name} loading="lazy" decoding="async" draggable={false} />
           )
         ) : null}
         {sticker.favorite && <span className="fav-tab" aria-label="已收藏" />}

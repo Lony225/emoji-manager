@@ -28,6 +28,7 @@ export type DialogState =
   | { kind: 'subscriptions'; focusAdd?: boolean }
   | { kind: 'settings' }
   | { kind: 'bulkTags'; ids: string[] }
+  | { kind: 'bulkRename'; ids: string[] }
   | { kind: 'move'; ids: string[] }
   | {
       kind: 'pickCategory';

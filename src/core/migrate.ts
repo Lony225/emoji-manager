@@ -47,7 +47,9 @@ function migrateSettings(raw: Record<string, unknown>): Settings {
   if (raw.gridSize === 'small' || raw.gridSize === 'medium' || raw.gridSize === 'large') s.gridSize = raw.gridSize;
   if (raw.copyMode === 'auto' || raw.copyMode === 'file' || raw.copyMode === 'image') s.copyMode = raw.copyMode;
   if (typeof raw.autoSyncOnStart === 'boolean') s.autoSyncOnStart = raw.autoSyncOnStart;
-  if (typeof raw.animateInGrid === 'boolean') s.animateInGrid = raw.animateInGrid;
+  if (raw.gridAnimation === 'always' || raw.gridAnimation === 'auto' || raw.gridAnimation === 'hover') s.gridAnimation = raw.gridAnimation;
+  // 旧版本的布尔开关：开 → 自动（动图少时照常播放），关 → 悬停播放
+  else if (typeof raw.animateInGrid === 'boolean') s.gridAnimation = raw.animateInGrid ? 'auto' : 'hover';
   if (typeof raw.floatHotkey === 'string') s.floatHotkey = raw.floatHotkey.trim().slice(0, 60);
   if (typeof raw.closeToTray === 'boolean') s.closeToTray = raw.closeToTray;
   if (typeof raw.showNames === 'boolean') s.showNames = raw.showNames;
@@ -150,6 +152,7 @@ export function migrate(raw: unknown): Library {
           createdAt,
           updatedAt: num(s.updatedAt, createdAt),
           hash: optStr(s.hash),
+          thumb: optStr(s.thumb),
           source: migrateSource(s.source, subIds),
         };
       });

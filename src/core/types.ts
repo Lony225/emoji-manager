@@ -35,6 +35,8 @@ export interface Sticker {
   updatedAt: number;
   /** 本地导入时的 sha256，用于去重 */
   hash?: string;
+  /** 网格缩略图（thumbs/…webp，动图取第一帧、大图缩小）；没有则直接显示原图 */
+  thumb?: string;
   source: StickerSource;
 }
 
@@ -75,12 +77,18 @@ export interface Subscription {
 export type GridSize = 'small' | 'medium' | 'large';
 export type Theme = 'system' | 'light' | 'dark';
 export type CopyMode = 'auto' | 'file' | 'image';
+/**
+ * 网格里动图怎么播放：
+ * always = 全部播放；hover = 只显示第一帧，悬停才播放；
+ * auto = 当前视图里动图不多时播放，太多（会卡）时自动切到 hover
+ */
+export type GridAnimation = 'always' | 'auto' | 'hover';
 
 export interface Settings {
   theme: Theme;
   gridSize: GridSize;
   autoSyncOnStart: boolean;
-  animateInGrid: boolean;
+  gridAnimation: GridAnimation;
   copyMode: CopyMode;
   /** 浮窗全局快捷键（Electron accelerator 写法），空字符串表示关闭 */
   floatHotkey: string;
@@ -106,7 +114,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   gridSize: 'medium',
   autoSyncOnStart: true,
-  animateInGrid: true,
+  gridAnimation: 'auto',
   copyMode: 'auto',
   floatHotkey: 'Alt+Shift+E',
   closeToTray: true,

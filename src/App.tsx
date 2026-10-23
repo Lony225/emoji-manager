@@ -31,9 +31,11 @@ import { ImportFolderDialog } from './components/dialogs/ImportFolderDialog';
 import { ExportDialog } from './components/dialogs/ExportDialog';
 import { CategoryParentDialog } from './components/dialogs/CategoryParentDialog';
 import { UpdateDialog } from './components/dialogs/UpdateDialog';
+import { BulkRenameDialog } from './components/dialogs/BulkRenameDialog';
 import { formatHotkey } from './components/HotkeyInput';
 import { runUpdateCheck } from './ui/update';
 import { installDeepLinkHandler } from './ui/deeplink';
+import { installThumbWorker } from './ui/thumbs';
 import { useTheme } from './ui/hooks';
 
 function isEditable(target: EventTarget | null): boolean {
@@ -169,6 +171,8 @@ function Dialogs() {
       return <SettingsDialog />;
     case 'bulkTags':
       return <BulkTagDialog key={dialog.ids.join()} ids={dialog.ids} />;
+    case 'bulkRename':
+      return <BulkRenameDialog key={dialog.ids.join()} ids={dialog.ids} />;
     case 'move': {
       const ids = dialog.ids;
       const lib = useLibraryStore.getState();
@@ -222,6 +226,7 @@ export function App() {
   useEffect(() => {
     if (!loaded) return;
     installDeepLinkHandler();
+    installThumbWorker();
     if (!useLibraryStore.getState().settings.checkUpdatesOnStart) return;
     const timer = setTimeout(() => void runUpdateCheck(false), 4000);
     return () => clearTimeout(timer);

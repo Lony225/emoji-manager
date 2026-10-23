@@ -93,15 +93,22 @@ export function SettingsDialog() {
 
       <div className="setting">
         <div className="text">
-          网格里播放动图
-          <small>关闭后只显示第一帧，鼠标悬停时才播放，表情很多时更省资源。</small>
+          网格里的动图
+          <small>“自动”在动图不多时播放，动图很多会卡时自动改成悬停才播放；网格平时显示的是缩略图，更省资源。</small>
         </div>
-        <input
-          type="checkbox"
-          checked={settings.animateInGrid}
-          onChange={(e) => updateSettings({ animateInGrid: e.target.checked })}
-          aria-label="网格里播放动图"
-        />
+        <div className="segmented" role="group" aria-label="网格里的动图">
+          {(
+            [
+              ['always', '全部播放'],
+              ['auto', '自动'],
+              ['hover', '悬停播放'],
+            ] as const
+          ).map(([key, label]) => (
+            <button key={key} className={settings.gridAnimation === key ? 'active' : ''} onClick={() => updateSettings({ gridAnimation: key })}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="setting">

@@ -4,6 +4,7 @@ import { useUiStore } from '../ui/uiStore';
 import { categoryCounts, categoryCountsWithChildren, categoryPath, childCategories, type SortKey } from '../core/selectors';
 import type { GridSize } from '../core/types';
 import { Icon } from '../ui/icons';
+import { useAutoPaused } from './StickerGrid';
 
 const SIZES: { key: GridSize; label: string }[] = [
   { key: 'small', label: '小' },
@@ -22,7 +23,12 @@ export function FilterBar({ count }: { count: number }) {
   const stickers = useLibraryStore((s) => s.stickers);
   const subscriptions = useLibraryStore((s) => s.subscriptions);
   const gridSize = useLibraryStore((s) => s.settings.gridSize);
+  const gridAnimation = useLibraryStore((s) => s.settings.gridAnimation);
   const updateSettings = useLibraryStore((s) => s.updateSettings);
+  const autoPaused = useAutoPaused();
+  // 当前实际是否在播放动图；点一下在“播放 / 悬停播放”之间切换
+  const playing = gridAnimation === 'always' || (gridAnimation === 'auto' && !autoPaused);
+  const toggleAnimation = () => updateSettings({ gridAnimation: playing ? 'hover' : 'always' });
   const direct = useMemo(() => categoryCounts(stickers), [stickers]);
   const withChildren = useMemo(() => categoryCountsWithChildren(stickers, categories), [stickers, categories]);
 
@@ -102,6 +108,20 @@ export function FilterBar({ count }: { count: number }) {
             <option value="name">按名称</option>
           </select>
         )}
+        <button
+          className={`btn icon-only sm anim-toggle${playing ? ' active' : ''}`}
+          onClick={toggleAnimation}
+          aria-label={playing ? '暂停网格里的动图' : '播放网格里的动图'}
+          title={
+            playing
+              ? '动图正在播放，点击改为悬停时才播放'
+              : autoPaused
+                ? '当前视图动图较多，已自动暂停（悬停播放）。点击强制全部播放'
+                : '动图已暂停（悬停播放），点击全部播放'
+          }
+        >
+          <Icon name={playing ? 'pause' : 'play'} size={15} />
+        </button>
         <div className="segmented" role="group" aria-label="网格大小">
           {SIZES.map((s) => (
             <button key={s.key} className={gridSize === s.key ? 'active' : ''} onClick={() => updateSettings({ gridSize: s.key })}>

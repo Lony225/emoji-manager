@@ -285,7 +285,7 @@ export function Sidebar() {
         <button
           className={`side-item${depth ? ' child' : ''}${sameView(view, { kind: 'category', id: c.id }) ? ' active' : ''}${dropClass(c.id)}`}
           style={depth ? { paddingLeft: 10 + depth * 18 } : undefined}
-          title="拖动可调整顺序；拖到某个分类上可变成它的子分类"
+          title={hasChildren ? '双击展开 / 收起；拖动可调整顺序；拖到某个分类上可变成它的子分类' : '拖动可调整顺序；拖到某个分类上可变成它的子分类'}
           draggable
           onDragStart={(e) => onDragStart(e, c)}
           onDragOver={(e) => onDragOver(e, c)}
@@ -293,6 +293,11 @@ export function Sidebar() {
           onDrop={(e) => onDrop(e, c)}
           onDragEnd={finishDrag}
           onClick={() => setView({ kind: 'category', id: c.id })}
+          onDoubleClick={(e) => {
+            // 双击展开 / 收起子分类（点在小箭头上的双击不再重复处理）
+            if (!hasChildren || (e.target as HTMLElement).closest('.twisty')) return;
+            toggleCollapsed(c.id);
+          }}
           onContextMenu={(e) => categoryMenu(e, c)}
         >
           {depth === 0 && <Icon name={c.subscriptionId ? 'rss' : 'folder'} size={16} className="icon" />}

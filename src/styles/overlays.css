@@ -477,3 +477,79 @@ kbd {
   word-break: break-word;
   user-select: text;
 }
+
+/* 批量改名 */
+.rename-form .field.grow {
+  flex: 1;
+}
+
+.rename-form .field:not(.grow) .input {
+  width: 96px;
+}
+
+.rename-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  background: var(--tile);
+}
+
+.rename-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+
+.rename-row:has(input) {
+  grid-template-columns: 32px minmax(0, 1fr);
+}
+
+.rename-row .mini {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.rename-row .old,
+.rename-row .new {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rename-row .old {
+  color: var(--ink-3);
+}
+
+.rename-row .arrow {
+  color: var(--ink-3);
+}
+
+.rename-row.changed .new {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.rename-row:not(.changed) .new {
+  color: var(--ink-3);
+}
+
+.rename-row .input {
+  height: 28px;
+}
+
+.dialog footer .hint.left {
+  margin-right: auto;
+  align-self: center;
+}

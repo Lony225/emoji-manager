@@ -333,11 +333,13 @@ export async function syncSubscription(
           {
             op: 'patchSticker',
             id: task.cur.id,
-            patch: { ...task.patch, file: dl.file, ext: dl.ext, size: dl.size, source: task.source, updatedAt: t },
+            patch: { ...task.patch, file: dl.file, ext: dl.ext, size: dl.size, source: task.source, updatedAt: t, thumb: undefined },
           },
         ]);
         updated++;
         if (task.cur.file !== dl.file) await platform.remove(task.cur.file).catch(() => undefined);
+        // 图片换了，旧缩略图作废
+        if (task.cur.thumb) await platform.remove(task.cur.thumb).catch(() => undefined);
       }
     } catch (e) {
       failed++;
