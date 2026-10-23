@@ -500,13 +500,13 @@ function render() {
     if (hasChildren) {
       boxes.push(
         subscriptionBox(
-          `订阅整个分组“${node.name}”：含 ${descendants} 个子表情包、共 ${node.count} 个表情，订阅后在应用里是同样的分类层级`,
+          `订阅整个分组（${descendants} 个子表情包，${node.count} 个表情，订阅后层级相同）`,
           groupManifestUrl(node.path),
           h('a', { class: 'btn', href: groupZipUrl(node.path), title: '把这个分组连同子表情包打包下载' }, icon('download'), 'zip'),
         ),
       );
     }
-    if (pack) boxes.push(subscriptionBox(hasChildren ? `只订阅“${node.name}”这一个表情包（不含子表情包）` : '订阅地址', `${location.origin}/packs/${pack.id}/manifest.json`));
+    if (pack) boxes.push(subscriptionBox(hasChildren ? '只订阅这个表情包（不含子表情包）' : '订阅地址', `${location.origin}/packs/${pack.id}/manifest.json`));
 
     const dropzone = pack
       ? h(
@@ -532,13 +532,13 @@ function render() {
           'div',
           { style: { minWidth: 0 } },
           breadcrumb(node),
-          h('h2', { style: { margin: 0 } }, icon(hasChildren ? 'folder' : 'image', 18), ' ', node.name, ' ', h('span', { class: 'hint num' }, pack ? `${pack.stickers.length} 个${hasChildren ? `，连同子表情包共 ${node.count} 个` : ''}` : `分组 · ${descendants} 个表情包 · ${node.count} 个表情`)),
+          h('h2', { style: { margin: 0 } }, icon(hasChildren ? 'folder' : 'image', 18), ' ', node.name, ' ', h('span', { class: 'hint num' }, pack ? `${pack.stickers.length} 个${hasChildren ? `，连同子表情包共 ${node.count} 个` : ''}` : `分组，${descendants} 个表情包，${node.count} 个表情`)),
         ),
         actions,
       ),
       pack?.description ? h('p', { class: 'hint', style: { margin: '6px 0 0' } }, pack.description) : null,
       pack?.tags.length ? h('p', { class: 'hint', style: { margin: '4px 0 0' } }, '包级标签：', pack.tags.map((t) => '#' + t).join(' ')) : null,
-      ...boxes,
+      boxes.length ? h('div', { class: 'sub-boxes' }, ...boxes) : null,
       hasChildren
         ? h(
             'div',

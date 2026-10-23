@@ -21,6 +21,6 @@ await app.listen({ port, host });
 app.store
   .backfillThumbs()
   .then((r) => {
-    if (r.made || r.failed) app.log.info(`缩略图补齐：新生成 ${r.made} 张，失败 ${r.failed} 张`);
+    if (r.made || r.covers || r.failed) app.log.info(`缩略图补齐：新生成 ${r.made} 张，封面小图 ${r.covers} 张，失败 ${r.failed} 张`);
   })
   .catch((e) => app.log.error(e));

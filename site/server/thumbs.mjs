@@ -5,10 +5,33 @@ import path from 'node:path';
 import sharp from 'sharp';
 
 export const THUMB_SIZE = 256;
+/** 首页分类卡片封面用的更小一档 */
+export const COVER_SIZE = 128;
 
 /** 原图文件名 → 缩略图文件名（同一个哈希 stem） */
 export function thumbFile(file) {
   return `${file.replace(/\.[^.]+$/, '')}.webp`;
+}
+
+/** 原图文件名 → 封面小图文件名 */
+export function coverFile(file) {
+  return `${file.replace(/\.[^.]+$/, '')}.s.webp`;
+}
+
+/** 从缩略图再缩出封面小图（输入已经是 256 的 webp，很快） */
+export async function makeCover(thumbPath, dest) {
+  await fsp.mkdir(path.dirname(dest), { recursive: true });
+  const tmp = `${dest}.${process.pid}.tmp`;
+  try {
+    await sharp(await fsp.readFile(thumbPath), { failOn: 'none' })
+      .resize(COVER_SIZE, COVER_SIZE, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 75, effort: 4 })
+      .toFile(tmp);
+    await fsp.rename(tmp, dest);
+  } catch (e) {
+    await fsp.rm(tmp, { force: true }).catch(() => undefined);
+    throw e;
+  }
 }
 
 /** 是否动图（gif / webp / avif 多帧）；读不出来按不是算 */

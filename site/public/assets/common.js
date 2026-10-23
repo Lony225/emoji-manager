@@ -287,12 +287,16 @@ export function groupZipUrl(path) {
   return `/groups/${encodePath(path)}.zip`;
 }
 
-/** <img> 的 error 处理：缩略图加载失败就换成原图（只换一次） */
+/** <img> 的 error 处理：封面小图失败换缩略图，再失败换原图 */
 export function fallbackToOriginal(s) {
   return (e) => {
     const img = e.target;
-    if (img.dataset.fallback) return;
-    img.dataset.fallback = '1';
-    img.src = s.url;
+    const step = Number(img.dataset.fallback || 0);
+    const chain = [s.cover, s.thumb, s.url].filter(Boolean);
+    const cur = img.getAttribute('src');
+    const next = chain.slice(chain.indexOf(cur) + 1)[0];
+    if (!next || step >= chain.length) return;
+    img.dataset.fallback = String(step + 1);
+    img.src = next;
   };
 }

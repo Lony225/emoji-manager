@@ -9,7 +9,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import { Store, MAX_FILE, normalizeGroup, packPath } from './store.mjs';
 import { issueSession, verifySession, verifyPassword, LoginGuard } from './auth.mjs';
 import { groupManifest, packManifest, readZipFile, siteManifest, streamZip } from './manifest.mjs';
-import { thumbFile } from './thumbs.mjs';
+import { coverFile, thumbFile } from './thumbs.mjs';
 import fsp from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import crypto from 'node:crypto';
@@ -80,6 +80,7 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
       animated: s.animated === true,
       url: `/images/${p.id}/${s.file}`,
       thumb: `/thumbs/${p.id}/${thumbFile(s.file)}`,
+      cover: `/thumbs/${p.id}/${coverFile(s.file)}`,
     })),
   });
 
@@ -94,12 +95,14 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
   // 缩略图：生产环境由 nginx 直接发文件，没有时才落到这里现做（做好就留着，下次 nginx 直接发）
   app.get('/thumbs/:packId/:file', async (req, reply) => {
     const pack = store.getPack(req.params.packId);
-    const stem = String(req.params.file).replace(/\.webp$/i, '');
-    const sticker = pack?.stickers.find((s) => s.file.startsWith(`${stem}.`));
-    if (!pack || !sticker || !/^[a-f0-9]+$/.test(stem)) throw Object.assign(new Error('不存在'), { statusCode: 404 });
+    // <哈希>.webp 是 256 的缩略图，<哈希>.s.webp 是 128 的封面小图
+    const m = String(req.params.file).match(/^([a-f0-9]+)(\.s)?\.webp$/i);
+    const stem = m?.[1];
+    const sticker = stem ? pack?.stickers.find((s) => s.file.startsWith(`${stem}.`)) : undefined;
+    if (!pack || !sticker) throw Object.assign(new Error('不存在'), { statusCode: 404 });
     let dest;
     try {
-      dest = await store.ensureThumb(pack.id, sticker);
+      dest = await store.ensureThumb(pack.id, sticker, { cover: !!m[2] });
     } catch {
       throw Object.assign(new Error('无法生成缩略图'), { statusCode: 404 });
     }
