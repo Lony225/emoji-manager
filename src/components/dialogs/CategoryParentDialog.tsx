@@ -3,6 +3,7 @@ import { useLibraryStore } from '../../core/store';
 import { useUiStore } from '../../ui/uiStore';
 import { flattenTree, isSelfOrDescendant } from '../../core/selectors';
 import { errorMessage } from '../../core/subscription/sync';
+import { SUBSCRIPTIONS_ENABLED } from '../../core/features';
 import { Modal } from '../Dialog';
 import { Icon } from '../../ui/icons';
 
@@ -39,7 +40,7 @@ export function CategoryParentDialog({ id }: { id: string }) {
             style={depth ? { paddingLeft: 10 + depth * 18 } : undefined}
             onClick={() => pick(c.id)}
           >
-            <Icon name={depth ? 'chevronDown' : c.subscriptionId ? 'rss' : 'folder'} size={16} style={depth ? { transform: 'rotate(-90deg)' } : undefined} />
+            <Icon name={depth ? 'chevronDown' : c.subscriptionId && SUBSCRIPTIONS_ENABLED ? 'rss' : 'folder'} size={16} style={depth ? { transform: 'rotate(-90deg)' } : undefined} />
             {c.name}
           </button>
         ))}

@@ -4,6 +4,7 @@ import { useUiStore } from '../../ui/uiStore';
 import { flattenTree, tagCounts } from '../../core/selectors';
 import { formatBytes } from '../../core/images';
 import { platform } from '../../platform';
+import { SUBSCRIPTIONS_ENABLED } from '../../core/features';
 import { confirmDeleteStickers } from '../../ui/actions';
 import { useFileUrl } from '../../ui/hooks';
 import { Modal } from '../Dialog';
@@ -52,8 +53,8 @@ export function StickerDialog({ id }: { id: string }) {
       <div className="meta">
         <span>{sticker.ext.toUpperCase()}</span>
         <span>{formatBytes(sticker.size)}</span>
-        <span>{sticker.source.type === 'subscription' ? '来自订阅' : '本地导入'}</span>
-        {sourceUrl && (
+        {SUBSCRIPTIONS_ENABLED && <span>{sticker.source.type === 'subscription' ? '来自订阅' : '本地导入'}</span>}
+        {sourceUrl && SUBSCRIPTIONS_ENABLED && (
           <a
             href={sourceUrl}
             onClick={(e) => {

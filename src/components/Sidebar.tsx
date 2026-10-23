@@ -14,6 +14,7 @@ import {
 } from '../core/selectors';
 import type { Category, Subscription } from '../core/types';
 import { errorMessage } from '../core/subscription/sync';
+import { SUBSCRIPTIONS_ENABLED } from '../core/features';
 import { exportCategory } from '../ui/actions';
 import { useNarrow, syncSummary } from '../ui/hooks';
 import { Icon, Spinner, type IconName } from '../ui/icons';
@@ -162,7 +163,7 @@ export function Sidebar() {
       y: e.clientY,
       items: [
         // 订阅生成的分类：直接在这里同步整个订阅
-        ...(sub
+        ...(sub && SUBSCRIPTIONS_ENABLED
           ? [
               {
                 label: `立即同步“${sub.name}”`,
@@ -300,7 +301,7 @@ export function Sidebar() {
           }}
           onContextMenu={(e) => categoryMenu(e, c)}
         >
-          {depth === 0 && <Icon name={c.subscriptionId ? 'rss' : 'folder'} size={16} className="icon" />}
+          {depth === 0 && <Icon name={c.subscriptionId && SUBSCRIPTIONS_ENABLED ? 'rss' : 'folder'} size={16} className="icon" />}
           <span className="label">{c.name}</span>
           <span className="count num">{treeCounts.get(c.id) ?? 0}</span>
           {hasChildren && (
@@ -343,7 +344,9 @@ export function Sidebar() {
               <Icon name="plus" size={15} />
             </button>
           </div>
-          {tree.length === 0 && <div className="side-empty">还没有分类。点 + 新建，订阅的表情包也会自动成为分类。</div>}
+          {tree.length === 0 && (
+            <div className="side-empty">{SUBSCRIPTIONS_ENABLED ? '还没有分类。点 + 新建，订阅的表情包也会自动成为分类。' : '还没有分类。点 + 新建，或者导入一个文件夹。'}</div>
+          )}
           {tree.map((node) => renderNode(node, 0))}
           {dragId && canDropToEnd && (
             <div
@@ -361,6 +364,7 @@ export function Sidebar() {
           )}
         </div>
 
+        {SUBSCRIPTIONS_ENABLED && (
         <div className="side-section">
           <div className="side-head">
             <span>订阅</span>
@@ -399,6 +403,7 @@ export function Sidebar() {
             );
           })}
         </div>
+        )}
 
         <div className="side-section">
           <div className="side-head">

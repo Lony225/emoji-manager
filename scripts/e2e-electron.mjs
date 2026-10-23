@@ -557,11 +557,37 @@ async function main() {
       stdio: 'ignore',
     });
     const secondExit = new Promise((resolve) => second.on('exit', resolve));
-    const deepDialog = await cdp.waitFor("document.querySelector('.dialog h3')?.textContent === '添加订阅？' ? document.querySelector('.dialog p')?.textContent : ''", 15000, '协议链接确认对话框').catch(() => '');
-    check('第二个实例把链接交给第一个实例并弹出确认', deepDialog.includes(deepUrl), deepDialog.slice(0, 80));
+    // 订阅入口隐藏时（SUBSCRIPTIONS_ENABLED = false），链接只给一条提示；开放时弹出确认对话框
+    const subsHidden = await cdp.eval("!document.querySelector('.topbar button[title=\"添加订阅\"]')");
+    if (subsHidden) {
+      const deepToast = await cdp.waitFor("window.__uiStore.getState().toasts.map(t => t.message).find(m => /订阅功能暂未开放/.test(m)) || ''", 15000, '协议链接提示').catch(() => '');
+      check('订阅隐藏时协议链接只提示不处理', !!deepToast, deepToast);
+    } else {
+      const deepDialog = await cdp.waitFor("document.querySelector('.dialog h3')?.textContent === '添加订阅？' ? document.querySelector('.dialog p')?.textContent : ''", 15000, '协议链接确认对话框').catch(() => '');
+      check('第二个实例把链接交给第一个实例并弹出确认', deepDialog.includes(deepUrl), deepDialog.slice(0, 80));
+    }
     check('第二个实例自己退出了', (await Promise.race([secondExit.then(() => 'exited'), sleep(8000).then(() => 'timeout')])) === 'exited');
-    await cdp.eval("Array.from(document.querySelectorAll('.dialog footer button')).find(b => b.textContent.includes('取消')).click()");
+    if (!subsHidden) await cdp.eval("Array.from(document.querySelectorAll('.dialog footer button')).find(b => b.textContent.includes('取消')).click()");
     assertEq('取消后没有新增订阅', await cdp.eval('window.__emojiStore.getState().subscriptions.length'), 2);
+
+    // ---- 订阅相关界面已隐藏
+    if (subsHidden) {
+      console.log('\n订阅入口隐藏');
+      const hidden = await cdp.eval(`(() => ({
+        sideHead: Array.from(document.querySelectorAll('.sidebar .side-head span')).some(e => e.textContent === '订阅'),
+        topBtn: !!document.querySelector('.topbar button[title="添加订阅"]') || !!document.querySelector('.topbar button[title="同步全部订阅"]'),
+        rssIcons: document.querySelectorAll('.sidebar .side-item .icon path[d^="M5 19"]').length,
+      }))()`);
+      check('侧栏没有“订阅”区、顶栏没有订阅按钮、分类不再显示订阅图标', !hidden.sideHead && !hidden.topBtn && hidden.rssIcons === 0, JSON.stringify(hidden));
+      await cdp.eval("window.__uiStore.getState().openDialog({ kind: 'settings' })");
+      await cdp.waitFor("document.querySelector('.dialog h3')?.textContent === '设置' ? 1 : 0", 3000, '设置对话框');
+      check('设置里没有“启动时自动同步订阅”', (await cdp.eval("document.querySelector('.dialog')?.textContent.includes('自动同步订阅')")) === false);
+      await cdp.eval('window.__uiStore.getState().closeDialog()');
+      await cdp.eval("window.__uiStore.getState().openDialog({ kind: 'subscriptions' })");
+      await sleep(200);
+      check('订阅对话框不会打开', (await cdp.eval("document.querySelectorAll('.dialog').length")) === 0);
+      await cdp.eval('window.__uiStore.getState().closeDialog()');
+    }
 
 
     // ---- 缩略图与动图播放

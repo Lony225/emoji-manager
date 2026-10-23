@@ -2,6 +2,7 @@ import { useLibraryStore } from '../core/store';
 import { useUiStore } from '../ui/uiStore';
 import { importImages, pickFiles } from '../ui/actions';
 import { Icon } from '../ui/icons';
+import { SUBSCRIPTIONS_ENABLED } from '../core/features';
 
 export function EmptyState({ filtered }: { filtered: boolean }) {
   const openDialog = useUiStore((s) => s.openDialog);
@@ -36,10 +37,10 @@ export function EmptyState({ filtered }: { filtered: boolean }) {
     <div className="empty">
       <div className="face">🙂</div>
       <h3>{total === 0 ? '还没有表情' : '这里还是空的'}</h3>
-      <p>把图片拖进窗口、按 Ctrl+V 粘贴，或者添加一个订阅地址，表情包就会自动同步到这里。</p>
+      <p>{SUBSCRIPTIONS_ENABLED ? '把图片拖进窗口、按 Ctrl+V 粘贴，或者添加一个订阅地址，表情包就会自动同步到这里。' : '把图片或整个文件夹拖进窗口，或者按 Ctrl+V 粘贴剪贴板里的图片。'}</p>
       <div className="actions">
         <button
-          className="btn"
+          className={SUBSCRIPTIONS_ENABLED ? 'btn' : 'btn primary'}
           onClick={() =>
             void pickFiles().then((files) => {
               if (files.length) importImages(files);
@@ -48,9 +49,11 @@ export function EmptyState({ filtered }: { filtered: boolean }) {
         >
           <Icon name="image" /> 导入图片
         </button>
-        <button className="btn primary" onClick={() => openDialog({ kind: 'subscriptions', focusAdd: true })}>
-          <Icon name="rss" /> 添加订阅
-        </button>
+        {SUBSCRIPTIONS_ENABLED && (
+          <button className="btn primary" onClick={() => openDialog({ kind: 'subscriptions', focusAdd: true })}>
+            <Icon name="rss" /> 添加订阅
+          </button>
+        )}
       </div>
     </div>
   );

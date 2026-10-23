@@ -248,7 +248,7 @@ export function FloatApp() {
   if (!loaded) return <div className="load-screen">正在加载…</div>;
 
   let emptyText = '';
-  if (stickers.length === 0) emptyText = '还没有表情。打开主窗口导入图片或添加订阅。';
+  if (stickers.length === 0) emptyText = '还没有表情。打开主窗口导入图片。';
   else if (list.length === 0 && searching) emptyText = '没有匹配的表情';
   else if (list.length === 0 && effectiveView.kind === 'recent') emptyText = '复制过的表情会出现在这里';
   else if (list.length === 0 && effectiveView.kind === 'favorites') emptyText = '还没有收藏的表情';

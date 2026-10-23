@@ -4,6 +4,7 @@ import type { FolderFile, PickedFolder } from '../platform/types';
 import { copySticker, copyStickers } from '../core/clipboard';
 import { platform } from '../platform';
 import { errorMessage } from '../core/subscription/sync';
+import { SUBSCRIPTIONS_ENABLED } from '../core/features';
 import { extFromName } from '../core/images';
 import { defaultPackageName } from '../core/package';
 import { categoryIdsIncludingChildren, categoryLabel } from '../core/selectors';
@@ -94,7 +95,7 @@ export function confirmDeleteStickers(ids: string[]): void {
   ui().openDialog({
     kind: 'confirm',
     title: n === 1 ? '删除这个表情？' : `删除 ${n} 个表情？`,
-    message: '图片文件会一并删除。来自订阅的表情删除后，下次同步不会再拉回来。',
+    message: SUBSCRIPTIONS_ENABLED ? '图片文件会一并删除。来自订阅的表情删除后，下次同步不会再拉回来。' : '图片文件会一并删除。',
     confirmText: '删除',
     danger: true,
     onConfirm: async () => {

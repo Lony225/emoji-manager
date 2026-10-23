@@ -4,6 +4,7 @@ import { useUiStore } from '../ui/uiStore';
 import { importImages, pickAndImportFolders, pickAndImportPackage, pickFiles } from '../ui/actions';
 import { useNarrow } from '../ui/hooks';
 import { platform } from '../platform';
+import { SUBSCRIPTIONS_ENABLED } from '../core/features';
 import { Icon, Spinner } from '../ui/icons';
 
 export function TopBar() {
@@ -102,12 +103,16 @@ export function TopBar() {
       <button className="btn" onClick={onImport} title="导入本地图片">
         <Icon name="image" /> {!narrow && '导入'}
       </button>
-      <button className="btn primary" onClick={() => openDialog({ kind: 'subscriptions', focusAdd: true })} title="添加订阅">
-        <Icon name="rss" /> {!narrow && '添加订阅'}
-      </button>
-      <button className="btn icon-only" onClick={() => void onSyncAll()} disabled={syncing} title="同步全部订阅">
-        {syncing ? <Spinner /> : <Icon name="sync" />}
-      </button>
+      {SUBSCRIPTIONS_ENABLED && (
+        <>
+          <button className="btn primary" onClick={() => openDialog({ kind: 'subscriptions', focusAdd: true })} title="添加订阅">
+            <Icon name="rss" /> {!narrow && '添加订阅'}
+          </button>
+          <button className="btn icon-only" onClick={() => void onSyncAll()} disabled={syncing} title="同步全部订阅">
+            {syncing ? <Spinner /> : <Icon name="sync" />}
+          </button>
+        </>
+      )}
       <button className="btn icon-only" onClick={() => openDialog({ kind: 'settings' })} title="设置" aria-label="设置">
         <Icon name="settings" />
       </button>

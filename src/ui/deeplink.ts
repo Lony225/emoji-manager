@@ -4,10 +4,15 @@ import { syncSummary } from './hooks';
 import { errorMessage } from '../core/subscription/sync';
 import { platform } from '../platform';
 import { parseDeepLink } from '../core/deeplink';
+import { SUBSCRIPTIONS_ENABLED } from '../core/features';
 
 /** 处理一条协议链接：弹出确认后添加订阅（已订阅的则直接同步） */
 export async function handleDeepLink(link: string): Promise<void> {
   const ui = useUiStore.getState();
+  if (!SUBSCRIPTIONS_ENABLED) {
+    ui.toast('订阅功能暂未开放，这个链接先不处理');
+    return;
+  }
   const lib = useLibraryStore.getState();
   const parsed = parseDeepLink(link);
   if (!parsed) {

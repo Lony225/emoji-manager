@@ -35,6 +35,7 @@ import { BulkRenameDialog } from './components/dialogs/BulkRenameDialog';
 import { formatHotkey } from './components/HotkeyInput';
 import { runUpdateCheck } from './ui/update';
 import { installDeepLinkHandler } from './ui/deeplink';
+import { SUBSCRIPTIONS_ENABLED } from './core/features';
 import { installThumbWorker } from './ui/thumbs';
 import { useTheme } from './ui/hooks';
 
@@ -166,7 +167,7 @@ function Dialogs() {
     case 'sticker':
       return <StickerDialog key={dialog.id} id={dialog.id} />;
     case 'subscriptions':
-      return <SubscriptionsDialog focusAdd={dialog.focusAdd} />;
+      return SUBSCRIPTIONS_ENABLED ? <SubscriptionsDialog focusAdd={dialog.focusAdd} /> : null;
     case 'settings':
       return <SettingsDialog />;
     case 'bulkTags':

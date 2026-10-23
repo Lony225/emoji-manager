@@ -3,6 +3,7 @@ import { useUiStore } from '../../ui/uiStore';
 import { flattenTree } from '../../core/selectors';
 import { Modal } from '../Dialog';
 import { Icon } from '../../ui/icons';
+import { SUBSCRIPTIONS_ENABLED } from '../../core/features';
 
 interface Props {
   title: string;
@@ -39,7 +40,7 @@ export function CategoryPickDialog({ title, current, newLabel = '创建', hint, 
             style={depth ? { paddingLeft: 10 + depth * 18 } : undefined}
             onClick={() => pick(c.id, c.name)}
           >
-            <Icon name={depth ? 'chevronDown' : c.subscriptionId ? 'rss' : 'folder'} size={16} style={depth ? { transform: 'rotate(-90deg)' } : undefined} />
+            <Icon name={depth ? 'chevronDown' : c.subscriptionId && SUBSCRIPTIONS_ENABLED ? 'rss' : 'folder'} size={16} style={depth ? { transform: 'rotate(-90deg)' } : undefined} />
             {c.name}
           </button>
         ))}

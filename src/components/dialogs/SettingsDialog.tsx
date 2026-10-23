@@ -6,6 +6,7 @@ import { platform } from '../../platform';
 import { errorMessage } from '../../core/subscription/sync';
 import { openExportDialog, pickAndImportPackage } from '../../ui/actions';
 import { runUpdateCheck } from '../../ui/update';
+import { SUBSCRIPTIONS_ENABLED } from '../../core/features';
 import { Modal } from '../Dialog';
 import { HotkeyInput } from '../HotkeyInput';
 import { Icon } from '../../ui/icons';
@@ -124,15 +125,17 @@ export function SettingsDialog() {
         />
       </div>
 
-      <div className="setting">
-        <div className="text">启动时自动同步订阅</div>
-        <input
-          type="checkbox"
-          checked={settings.autoSyncOnStart}
-          onChange={(e) => updateSettings({ autoSyncOnStart: e.target.checked })}
-          aria-label="启动时自动同步订阅"
-        />
-      </div>
+      {SUBSCRIPTIONS_ENABLED && (
+        <div className="setting">
+          <div className="text">启动时自动同步订阅</div>
+          <input
+            type="checkbox"
+            checked={settings.autoSyncOnStart}
+            onChange={(e) => updateSettings({ autoSyncOnStart: e.target.checked })}
+            aria-label="启动时自动同步订阅"
+          />
+        </div>
+      )}
 
       {caps.desktop && (
         <>

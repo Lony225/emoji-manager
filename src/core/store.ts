@@ -5,6 +5,7 @@ import { applyOps, type LibraryOp } from './ops';
 import { errorMessage, syncSubscription as runSync, type SyncProgress, type SyncResult } from './subscription/sync';
 import { extFromBytes, extFromName, fileStem, sha256Hex } from './images';
 import { migrate } from './migrate';
+import { SUBSCRIPTIONS_ENABLED } from './features';
 import { stickerKey } from './subscription/sync';
 import { emptyLibrary, type Category, type Library, type Settings, type Sticker, type Subscription } from './types';
 import type { UsageMap } from '../platform/types';
@@ -644,7 +645,7 @@ async function doLoad(): Promise<void> {
     }
     platform.onBeforeQuit(() => flushSave());
     void applyDesktop(lib.settings);
-    if (lib.settings.autoSyncOnStart && lib.subscriptions.length > 0) {
+    if (SUBSCRIPTIONS_ENABLED && lib.settings.autoSyncOnStart && lib.subscriptions.length > 0) {
       setTimeout(() => void get().syncAll(true), 1500);
     }
   } catch (e) {

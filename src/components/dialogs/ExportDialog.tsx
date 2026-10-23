@@ -5,6 +5,7 @@ import { categoryLabel } from '../../core/selectors';
 import { formatBytes } from '../../core/images';
 import { errorMessage } from '../../core/subscription/sync';
 import { platform } from '../../platform';
+import { SUBSCRIPTIONS_ENABLED } from '../../core/features';
 import { Modal } from '../Dialog';
 import { Icon, Spinner } from '../../ui/icons';
 
@@ -83,7 +84,7 @@ export function ExportDialog({ ids, defaultName }: { ids: string[]; defaultName:
       </div>
       <div className="hint">
         压缩包里包含图片和 manifest.json，名称、标签、分类（含二级分类）都会带上。对方在“导入 → 导入表情包”里选择这个 zip 即可。
-        把解压后的文件夹放到网上，manifest.json 的地址还能直接作为订阅地址。
+        {SUBSCRIPTIONS_ENABLED && '把解压后的文件夹放到网上，manifest.json 的地址还能直接作为订阅地址。'}
       </div>
     </Modal>
   );
