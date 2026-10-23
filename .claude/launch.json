@@ -8,6 +8,12 @@
       "port": 5173
     },
     {
+      "name": "web-alt",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev", "--port", "5181", "--strictPort"],
+      "port": 5181
+    },
+    {
       "name": "samples",
       "runtimeExecutable": "node",
       "runtimeArgs": ["scripts/serve-samples.mjs", "8787"],

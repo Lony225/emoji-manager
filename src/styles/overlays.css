@@ -200,6 +200,16 @@
 .setting .text {
   display: flex;
   flex-direction: column;
+  /* 说明文字可以换行收缩；右侧的控件不能被挤扁 */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.setting > .segmented,
+.setting > .select,
+.setting > .row,
+.setting > input[type='checkbox'] {
+  flex: none;
 }
 
 .setting .text small {
