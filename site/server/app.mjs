@@ -32,7 +32,18 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
   await app.register(fastifyMultipart, { limits: { fileSize: MAX_FILE, files: 300 } });
 
   // 静态页面与资源
-  await app.register(fastifyStatic, { root: PUBLIC_DIR, prefix: '/', index: ['index.html'], decorateReply: true });
+  // 页面由下面的路由发，脚本 / 样式地址上的 ?v= 换成资源内容的哈希：发布后地址就变，浏览器不会再用旧缓存
+  await app.register(fastifyStatic, { root: PUBLIC_DIR, prefix: '/', index: false, decorateReply: true });
+  const assetVersion = (() => {
+    const dir = path.join(PUBLIC_DIR, 'assets');
+    const h = crypto.createHash('sha1');
+    for (const f of fs.readdirSync(dir).sort()) h.update(f).update(fs.readFileSync(path.join(dir, f)));
+    return h.digest('hex').slice(0, 8);
+  })();
+  const page = (name) => fs.readFileSync(path.join(PUBLIC_DIR, name), 'utf8').replace(/\?v=[\w.-]+/g, `?v=${assetVersion}`);
+  const pages = { index: page('index.html'), admin: page('admin.html') };
+  const sendPage = (reply, html) => reply.header('content-type', 'text/html; charset=utf-8').header('cache-control', 'no-cache').send(html);
+  app.get('/', (_req, reply) => sendPage(reply, pages.index));
   // 图片：内容寻址的文件名，可长期缓存
   await app.register(fastifyStatic, {
     root: store.imagesDir,
@@ -286,13 +297,13 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
     });
   });
 
-  app.get('/admin', (_req, reply) => reply.sendFile('admin.html'));
+  app.get('/admin', (_req, reply) => sendPage(reply, pages.admin));
   app.get('/healthz', async () => ({ ok: true, packs: store.index.packs.length }));
 
   // 单页：其他路径回到首页
   app.setNotFoundHandler((req, reply) => {
     if (req.url.startsWith('/api/') || req.url.startsWith('/images/') || req.url.startsWith('/thumbs/')) return reply.code(404).send({ error: '不存在' });
-    return reply.sendFile('index.html');
+    return sendPage(reply, pages.index);
   });
 
   app.store = store;
