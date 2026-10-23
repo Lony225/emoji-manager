@@ -9,6 +9,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import { Store, MAX_FILE, normalizeGroup, packPath } from './store.mjs';
 import { issueSession, verifySession, verifyPassword, LoginGuard } from './auth.mjs';
 import { groupManifest, packManifest, readZipFile, siteManifest, streamZip } from './manifest.mjs';
+import { thumbFile } from './thumbs.mjs';
 import fsp from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import crypto from 'node:crypto';
@@ -70,7 +71,16 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
     tags: p.tags,
     count: p.stickers.length,
     updatedAt: p.updatedAt,
-    stickers: p.stickers.map((s) => ({ id: s.id, name: s.name, tags: s.tags, ext: s.ext, size: s.size, url: `/images/${p.id}/${s.file}` })),
+    stickers: p.stickers.map((s) => ({
+      id: s.id,
+      name: s.name,
+      tags: s.tags,
+      ext: s.ext,
+      size: s.size,
+      animated: s.animated === true,
+      url: `/images/${p.id}/${s.file}`,
+      thumb: `/thumbs/${p.id}/${thumbFile(s.file)}`,
+    })),
   });
 
   // ---------------------------------------------------------------- 公开接口
@@ -80,6 +90,22 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
     passwordSet: store.hasPassword(),
     packs: store.sortedPacks().map(publicPack),
   }));
+
+  // 缩略图：生产环境由 nginx 直接发文件，没有时才落到这里现做（做好就留着，下次 nginx 直接发）
+  app.get('/thumbs/:packId/:file', async (req, reply) => {
+    const pack = store.getPack(req.params.packId);
+    const stem = String(req.params.file).replace(/\.webp$/i, '');
+    const sticker = pack?.stickers.find((s) => s.file.startsWith(`${stem}.`));
+    if (!pack || !sticker || !/^[a-f0-9]+$/.test(stem)) throw Object.assign(new Error('不存在'), { statusCode: 404 });
+    let dest;
+    try {
+      dest = await store.ensureThumb(pack.id, sticker);
+    } catch {
+      throw Object.assign(new Error('无法生成缩略图'), { statusCode: 404 });
+    }
+    reply.header('content-type', 'image/webp').header('cache-control', 'public, max-age=31536000, immutable').header('access-control-allow-origin', '*');
+    return reply.send(fs.createReadStream(dest));
+  });
 
   app.get('/manifest.json', async (_req, reply) => {
     reply.header('access-control-allow-origin', '*').header('cache-control', 'no-cache');
@@ -262,7 +288,7 @@ export async function buildApp({ dataDir, initialPassword, logger = true, trustP
 
   // 单页：其他路径回到首页
   app.setNotFoundHandler((req, reply) => {
-    if (req.url.startsWith('/api/') || req.url.startsWith('/images/')) return reply.code(404).send({ error: '不存在' });
+    if (req.url.startsWith('/api/') || req.url.startsWith('/images/') || req.url.startsWith('/thumbs/')) return reply.code(404).send({ error: '不存在' });
     return reply.sendFile('index.html');
   });
 

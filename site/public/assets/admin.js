@@ -1,4 +1,4 @@
-import { $, h, icon, api, upload, toast, dialog, confirmDialog, promptDialog, copyText, formatBytes, buildTree, countPacks, groupManifestUrl, groupZipUrl } from './common.js?v=2';
+import { $, h, icon, api, upload, toast, dialog, confirmDialog, promptDialog, copyText, formatBytes, buildTree, countPacks, groupManifestUrl, groupZipUrl, fallbackToOriginal } from './common.js?v=2';
 
 // active 是侧栏树里选中的节点路径（"分组 / 名称"）；节点可能是一个表情包、一个分组，或两者都是
 const state = { admin: false, site: null, packs: [], tree: buildTree([]), active: null, selection: new Set(), uploading: null, collapsed: new Set() };
@@ -324,7 +324,8 @@ function stickerCard(s) {
   const card = h(
     'div',
     { class: `card${selected ? ' selected' : ''}`, title: s.tags.length ? `${s.name}\n${s.tags.map((t) => '#' + t).join(' ')}` : s.name },
-    h('div', { class: 'thumb' }, h('img', { src: s.url, alt: s.name, loading: 'lazy' })),
+    h('div', { class: 'thumb' }, h('img', { src: s.thumb || s.url, alt: s.name, loading: 'lazy', decoding: 'async', onError: fallbackToOriginal(s) })),
+    s.animated ? h('span', { class: 'badge' }, s.ext === 'gif' ? 'GIF' : '动图') : null,
     h('button', { class: 'check', 'aria-label': selected ? '取消选择' : '选择', onClick: (e) => (e.stopPropagation(), toggle(s.id)) }, selected ? icon('check', 13) : null),
     h('div', { class: 'name', title: '点击改名', onClick: (e) => (e.stopPropagation(), renameSticker(s)) }, s.name),
   );

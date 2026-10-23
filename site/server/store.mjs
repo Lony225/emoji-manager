@@ -6,6 +6,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { extFromBytes, extFromName, fileStem, normalizeTags } from './images.mjs';
 import { hashPassword } from './auth.mjs';
+import { makeThumb, probeAnimated, thumbFile, ThumbQueue } from './thumbs.mjs';
 
 export const MAX_FILE = 20 * 1024 * 1024;
 
@@ -55,6 +56,8 @@ export class Store {
     this.indexFile = path.join(this.dataDir, 'index.json');
     this.configFile = path.join(this.dataDir, 'config.json');
     this.imagesDir = path.join(this.dataDir, 'images');
+    this.thumbsDir = path.join(this.dataDir, 'thumbs');
+    this.thumbs = new ThumbQueue(2);
     this.index = { version: 1, site: { title: '表情包', description: '' }, packs: [] };
     this.config = null;
     this.queue = Promise.resolve();
@@ -90,6 +93,7 @@ export class Store {
                       name: cleanName(s.name, '表情'),
                       tags: normalizeTags(s.tags),
                       createdAt: s.createdAt ?? Date.now(),
+                      animated: typeof s.animated === 'boolean' ? s.animated : undefined, // 老数据：启动时补
                     }))
                 : [],
             })),
@@ -163,6 +167,64 @@ export class Store {
     return abs;
   }
 
+  thumbPath(packId, file) {
+    const abs = path.resolve(this.thumbsDir, packId, thumbFile(file));
+    if (!abs.startsWith(this.thumbsDir + path.sep)) throw new Error('非法路径');
+    return abs;
+  }
+
+  /** 保证某张表情有缩略图（没有就现做），返回缩略图路径；做不出来会抛错 */
+  async ensureThumb(packId, sticker) {
+    const dest = this.thumbPath(packId, sticker.file);
+    try {
+      await fsp.access(dest);
+      return dest;
+    } catch {
+      await this.thumbs.run(() => makeThumb(this.imagePath(packId, sticker.file), dest));
+      return dest;
+    }
+  }
+
+  /**
+   * 启动时补齐缩略图和 animated 标记（老数据、或缩略图目录被清过）。
+   * 逐张串行做，不影响正常请求。
+   */
+  async backfillThumbs() {
+    let made = 0;
+    let failed = 0;
+    const flags = new Map();
+    for (const p of [...this.index.packs]) {
+      for (const s of [...p.stickers]) {
+        const src = this.imagePath(p.id, s.file);
+        const dest = this.thumbPath(p.id, s.file);
+        let exists = true;
+        try {
+          await fsp.access(dest);
+        } catch {
+          exists = false;
+        }
+        if (exists) {
+          if (s.animated === undefined) flags.set(s.id, await probeAnimated(src));
+          continue;
+        }
+        try {
+          const { animated } = await this.thumbs.run(() => makeThumb(src, dest));
+          flags.set(s.id, animated);
+          made++;
+        } catch {
+          failed++;
+          if (s.animated === undefined) flags.set(s.id, false);
+        }
+      }
+    }
+    if (flags.size) {
+      await this.mutate((idx) => {
+        for (const p of idx.packs) for (const s of p.stickers) if (flags.has(s.id)) s.animated = flags.get(s.id);
+      });
+    }
+    return { made, failed, flagged: flags.size };
+  }
+
   // ---------------------------------------------------------------- 表情包
 
   createPack({ name, description, tags, group }) {
@@ -219,6 +281,7 @@ export class Store {
       return idx.packs.splice(i, 1)[0];
     });
     await fsp.rm(path.join(this.imagesDir, pack.id), { recursive: true, force: true });
+    await fsp.rm(path.join(this.thumbsDir, pack.id), { recursive: true, force: true });
     return pack;
   }
 
@@ -256,6 +319,13 @@ export class Store {
         const file = `${hash.slice(0, 20)}.${ext}`;
         await fsp.mkdir(path.join(this.imagesDir, pack.id), { recursive: true });
         await fsp.writeFile(this.imagePath(pack.id, file), f.bytes);
+        // 顺手生成缩略图；做不出来（少见格式）就没有，前端回退到原图
+        let animated = false;
+        try {
+          ({ animated } = await this.thumbs.run(() => makeThumb(this.imagePath(pack.id, file), this.thumbPath(pack.id, file))));
+        } catch {
+          /* 没有缩略图 */
+        }
         toAdd.push({
           id: newId(),
           file,
@@ -265,6 +335,7 @@ export class Store {
           name: cleanName(f.displayName, fileStem(f.name)),
           tags: normalizeTags(f.tags),
           createdAt: Date.now(),
+          animated,
         });
         result.added++;
       } catch (e) {
@@ -314,7 +385,10 @@ export class Store {
       }
       return out;
     });
-    for (const r of removed) await fsp.rm(this.imagePath(r.packId, r.file), { force: true }).catch(() => undefined);
+    for (const r of removed) {
+      await fsp.rm(this.imagePath(r.packId, r.file), { force: true }).catch(() => undefined);
+      await fsp.rm(this.thumbPath(r.packId, r.file), { force: true }).catch(() => undefined);
+    }
     return removed.length;
   }
 
@@ -334,9 +408,12 @@ export class Store {
           }
           if (target.stickers.some((t) => t.hash === s.hash)) {
             await fsp.rm(this.imagePath(p.id, s.file), { force: true }).catch(() => undefined);
+            await fsp.rm(this.thumbPath(p.id, s.file), { force: true }).catch(() => undefined);
           } else {
             await fsp.mkdir(path.join(this.imagesDir, target.id), { recursive: true });
             await fsp.rename(this.imagePath(p.id, s.file), this.imagePath(target.id, s.file));
+            await fsp.mkdir(path.join(this.thumbsDir, target.id), { recursive: true });
+            await fsp.rename(this.thumbPath(p.id, s.file), this.thumbPath(target.id, s.file)).catch(() => undefined);
             target.stickers.push(s);
           }
           moved++;

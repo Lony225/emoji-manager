@@ -1,7 +1,25 @@
-import { $, h, icon, api, toast, dialog, copyText, copyImage, formatBytes, RELEASES_URL, buildTree, countPacks, groupManifestUrl, groupZipUrl } from './common.js?v=2';
+import { $, h, icon, api, toast, dialog, copyText, copyImage, formatBytes, RELEASES_URL, buildTree, countPacks, groupManifestUrl, groupZipUrl, fallbackToOriginal } from './common.js?v=2';
 
-// active：'all' 或侧栏页签选中的一级节点路径
-const state = { site: null, packs: [], tree: buildTree([]), active: 'all', query: '' };
+// 省带宽的首页：只放分类卡片（每张卡几张小缩略图），点进分类才加载它的表情；
+// 表情网格一律用静态缩略图（动图只有第一帧），点击复制 / 下载时才取原图。
+const state = { site: null, packs: [], tree: buildTree([]), query: '' };
+
+// 地址栏 hash 记住当前在哪个分类：#/n/<路径>
+function route() {
+  const m = location.hash.match(/^#\/n\/(.+)$/);
+  if (!m) return { kind: 'home' };
+  try {
+    return { kind: 'node', path: decodeURIComponent(m[1]) };
+  } catch {
+    return { kind: 'home' };
+  }
+}
+const nodeHash = (path) => `#/n/${encodeURIComponent(path)}`;
+window.addEventListener('hashchange', () => {
+  closeMenu();
+  window.scrollTo(0, 0);
+  render();
+});
 
 async function load() {
   try {
@@ -97,7 +115,7 @@ function stickerMenu(e, card, s) {
     { class: 'menu', role: 'menu' },
     h('button', { onClick: () => (closeMenu(), copySticker(card, s)) }, '复制图片'),
     h('button', { onClick: () => (closeMenu(), copyText(abs).then(() => toast('已复制图片链接', 'success'))) }, '复制图片链接'),
-    h('a', { href: s.url, download: `${s.name}.${s.ext}`, onClick: closeMenu }, '下载原图'),
+    h('a', { href: s.url, download: `${s.name}.${s.ext}`, onClick: closeMenu }, `下载原图（${formatBytes(s.size)}）`),
     h('a', { href: s.url, target: '_blank', rel: 'noopener', onClick: closeMenu }, '在新标签页打开'),
   );
   document.body.append(menu);
@@ -106,11 +124,13 @@ function stickerMenu(e, card, s) {
   menu.style.top = `${Math.min(e.clientY, innerHeight - r.height - 8)}px`;
 }
 
+/** 表情卡片：显示的是静态缩略图，点击复制原图 */
 function stickerCard(s) {
   const card = h(
     'div',
-    { class: 'card', role: 'button', tabindex: 0, title: s.tags.length ? `${s.name}\n${s.tags.map((t) => '#' + t).join(' ')}` : s.name },
-    h('div', { class: 'thumb' }, h('img', { src: s.url, alt: s.name, loading: 'lazy', decoding: 'async' })),
+    { class: 'card', role: 'button', tabindex: 0, title: `${s.name}${s.tags.length ? `\n${s.tags.map((t) => '#' + t).join(' ')}` : ''}${s.animated ? '\n动图，点击复制原图' : ''}` },
+    h('div', { class: 'thumb' }, h('img', { src: s.thumb || s.url, alt: s.name, loading: 'lazy', decoding: 'async', onError: fallbackToOriginal(s) })),
+    s.animated ? h('span', { class: 'badge' }, s.ext === 'gif' ? 'GIF' : '动图') : null,
     h('div', { class: 'name' }, s.name),
   );
   card.addEventListener('click', () => copySticker(card, s));
@@ -124,129 +144,168 @@ function stickerCard(s) {
   return card;
 }
 
-// ---------------------------------------------------------------- 渲染
+// ---------------------------------------------------------------- 分类卡片
+/** 卡片封面：这个节点下前几张表情的缩略图 */
+function coverThumbs(node, max = 4) {
+  const out = [];
+  const walk = (n) => {
+    if (out.length >= max) return;
+    if (n.pack) for (const s of n.pack.stickers) {
+      if (out.length >= max) break;
+      out.push(s);
+    }
+    for (const c of n.children) walk(c);
+  };
+  walk(node);
+  return out;
+}
+
+function nodeCard(node) {
+  const covers = coverThumbs(node);
+  const isGroup = node.children.length > 0;
+  return h(
+    'a',
+    { class: 'cat-card', href: nodeHash(node.path), title: node.path },
+    h(
+      'div',
+      { class: `covers n${Math.min(covers.length, 4)}` },
+      // 封面很小（几 KB），直接加载，不用 lazy
+      ...covers.map((s) => h('img', { src: s.thumb || s.url, alt: '', decoding: 'async', onError: fallbackToOriginal(s) })),
+      covers.length === 0 ? h('span', { class: 'hint' }, '还没有表情') : null,
+    ),
+    h('div', { class: 'title' }, icon(isGroup ? 'folder' : 'image', 15), h('span', {}, node.name)),
+    h('div', { class: 'meta hint' }, isGroup ? `${countPacks(node)} 个表情包 · ${node.count} 个表情` : `${node.count} 个表情`),
+  );
+}
+
+function breadcrumb(node) {
+  const segs = node.path.split(' / ');
+  const items = [h('a', { href: '#/' }, '首页')];
+  segs.forEach((seg, i) => {
+    items.push(h('span', {}, '/'));
+    items.push(i === segs.length - 1 ? h('span', { class: 'current' }, seg) : h('a', { href: nodeHash(segs.slice(0, i + 1).join(' / ')) }, seg));
+  });
+  return h('div', { class: 'breadcrumb' }, ...items);
+}
+
+// ---------------------------------------------------------------- 页面
+function hero() {
+  const total = state.packs.reduce((n, p) => n + p.stickers.length, 0);
+  return h(
+    'div',
+    { class: 'hero' },
+    h('h1', {}, state.site.title),
+    state.site.description ? h('p', {}, state.site.description) : h('p', {}, '点进分类浏览，点一下表情就复制到剪贴板，去聊天窗口粘贴；也可以一键导入到表情包管理器，之后自动同步更新。'),
+    h(
+      'div',
+      { class: 'actions' },
+      h('button', { class: 'btn primary', onClick: () => importToApp(packUrl(null), state.site.title), disabled: total === 0 }, icon('rocket'), '一键导入全部'),
+      h('button', { class: 'btn', onClick: () => copySubscription(packUrl(null)), disabled: total === 0 }, icon('link'), '复制订阅地址'),
+      h('a', { class: `btn${total ? '' : ' disabled'}`, href: '/all.zip' }, icon('download'), '下载全部 zip'),
+      h('a', { class: 'btn ghost', href: RELEASES_URL, target: '_blank', rel: 'noopener' }, '获取表情包管理器'),
+    ),
+  );
+}
+
+function homeView() {
+  const tops = state.tree.root.children;
+  return [
+    hero(),
+    tops.length
+      ? [h('h2', { class: 'section-title' }, '分类', h('span', { class: 'hint' }, ' 点进去看表情')), h('div', { class: 'cat-grid' }, ...tops.map(nodeCard))]
+      : h('div', { class: 'empty' }, h('h3', {}, '还没有表情包'), h('p', {}, '管理员登录后就能上传。')),
+  ];
+}
+
+function nodeView(node) {
+  const isGroup = node.children.length > 0;
+  const url = isGroup ? groupManifestUrl(node.path) : packUrl(node.pack.id);
+  const zip = isGroup ? groupZipUrl(node.path) : `/packs/${node.pack.id}.zip`;
+  const metaBits = [isGroup ? `${countPacks(node)} 个表情包` : null, `${node.count} 个表情`, node.pack?.description || null].filter(Boolean);
+  const parts = [
+    breadcrumb(node),
+    h(
+      'div',
+      { class: 'node-head' },
+      icon(isGroup ? 'folder' : 'image', 22),
+      h('div', { class: 'text' }, h('h1', {}, node.name), h('div', { class: 'hint' }, metaBits.join(' · ')), node.pack?.tags.length ? h('div', { class: 'hint' }, node.pack.tags.map((t) => '#' + t).join(' ')) : null),
+      h(
+        'div',
+        { class: 'actions' },
+        h('button', { class: 'btn sm primary', onClick: () => importToApp(url, node.path), title: isGroup ? '把这个分类连同所有子分类导入桌面应用' : '用 emojimanager:// 协议打开桌面应用并添加订阅' }, icon('rocket', 14), isGroup ? '导入整个分类' : '导入到表情包管理器'),
+        h('button', { class: 'btn sm', onClick: () => copySubscription(url), title: url }, icon('link', 14), '复制订阅地址'),
+        h('a', { class: 'btn sm', href: zip }, icon('download', 14), '下载 zip'),
+      ),
+    ),
+  ];
+  if (isGroup) parts.push(h('h2', { class: 'section-title' }, '子分类'), h('div', { class: 'cat-grid' }, ...node.children.map(nodeCard)));
+  if (node.pack) {
+    parts.push(h('h2', { class: 'section-title' }, isGroup ? `“${node.name}”自己的表情` : '表情', h('span', { class: 'hint' }, ' 点击复制原图，右键更多操作')));
+    parts.push(node.pack.stickers.length ? h('div', { class: 'grid' }, ...node.pack.stickers.map(stickerCard)) : h('div', { class: 'empty' }, '这个表情包还是空的'));
+  }
+  return parts;
+}
+
 function matches(s, q) {
-  if (!q) return true;
   const hay = `${s.name} ${s.tags.join(' ')}`.toLowerCase();
   return q.split(/\s+/).every((t) => hay.includes(t));
 }
 
-/** 节点下匹配搜索词的表情数 */
-function matchCount(node, q) {
-  return (node.pack ? node.pack.stickers.filter((s) => matches(s, q)).length : 0) + node.children.reduce((n, c) => n + matchCount(c, q), 0);
-}
-
-function packSection(p, q) {
-  const list = p.stickers.filter((s) => matches(s, q));
-  if (q && list.length === 0) return null;
-  return h(
-    'section',
-    { class: 'pack', id: `pack-${p.id}` },
-    h(
-      'div',
-      { class: 'pack-head' },
-      h('h2', {}, p.group ? h('span', { class: 'hint' }, `${p.group} / `) : null, p.name),
-      h('span', { class: 'count num' }, `${list.length}${q ? ` / ${p.stickers.length}` : ''} 个`),
+const SEARCH_LIMIT = 240;
+function searchView(q) {
+  const sections = [];
+  let shown = 0;
+  for (const p of state.packs) {
+    const list = p.stickers.filter((s) => matches(s, q));
+    if (!list.length) continue;
+    const slice = list.slice(0, Math.max(0, SEARCH_LIMIT - shown));
+    shown += slice.length;
+    sections.push(
       h(
-        'div',
-        { class: 'actions' },
-        h('button', { class: 'btn sm primary', onClick: () => importToApp(packUrl(p.id), p.path), title: '用 emojimanager:// 协议打开桌面应用并添加订阅' }, icon('rocket', 14), '导入到表情包管理器'),
-        h('button', { class: 'btn sm', onClick: () => copySubscription(packUrl(p.id)), title: packUrl(p.id) }, icon('link', 14), '复制订阅地址'),
-        h('a', { class: 'btn sm', href: `/packs/${p.id}.zip` }, icon('download', 14), '下载 zip'),
+        'section',
+        { class: 'pack' },
+        h('div', { class: 'pack-head' }, h('h2', {}, h('a', { href: nodeHash(p.path) }, p.path)), h('span', { class: 'count num' }, `${list.length} 个`)),
+        h('div', { class: 'grid' }, ...slice.map(stickerCard)),
       ),
-      p.description ? h('p', { class: 'desc' }, p.description) : null,
+    );
+    if (shown >= SEARCH_LIMIT) {
+      sections.push(h('p', { class: 'hint' }, `结果太多，只显示前 ${SEARCH_LIMIT} 个，换个更具体的词试试。`));
+      break;
+    }
+  }
+  return [
+    h(
+      'div',
+      { class: 'search-head' },
+      h('h1', {}, `搜索“${state.query.trim()}”`),
+      h('span', { class: 'hint' }, sections.length ? `${shown} 个结果` : '没有匹配的表情'),
+      h('button', { class: 'btn sm ghost', onClick: () => (($('#search').value = ''), (state.query = ''), render()) }, '清除'),
     ),
-    list.length ? h('div', { class: 'grid' }, ...list.map(stickerCard)) : h('div', { class: 'empty' }, '这个表情包还是空的'),
-  );
+    ...sections,
+  ];
 }
 
-/** 分组（有子表情包的节点）的标题条：一次订阅 / 下载整个分组 */
-function groupHead(node) {
-  const url = groupManifestUrl(node.path);
+function footer() {
+  const total = state.packs.reduce((n, p) => n + p.stickers.length, 0);
   return h(
-    'div',
-    { class: 'group-head' },
-    icon('folder', 20),
-    h(
-      'div',
-      { class: 'text' },
-      h('h2', {}, node.path),
-      h('div', { class: 'hint' }, `分组 · ${countPacks(node)} 个表情包 · ${node.count} 个表情。订阅后在应用里就是“${node.name}”分类和它下面的子分类，之后自动同步。`),
-    ),
-    h(
-      'div',
-      { class: 'actions' },
-      h('button', { class: 'btn sm primary', onClick: () => importToApp(url, node.path), title: '把这个分组连同所有子表情包导入桌面应用' }, icon('rocket', 14), '导入整个分组'),
-      h('button', { class: 'btn sm', onClick: () => copySubscription(url), title: url }, icon('link', 14), '复制订阅地址'),
-      h('a', { class: 'btn sm', href: groupZipUrl(node.path) }, icon('download', 14), '下载 zip'),
-    ),
+    'footer',
+    { class: 'foot' },
+    h('span', {}, `共 ${state.packs.length} 个表情包、${total} 个表情`),
+    h('a', { href: '/manifest.json' }, '订阅清单'),
+    h('a', { href: 'https://github.com/Lony225/emoji-manager', target: '_blank', rel: 'noopener' }, '表情包管理器'),
+    h('span', {}, '列表里是缩略图，点击复制原图，右键更多操作'),
   );
-}
-
-/** 一个节点（及其子树）对应的页面块：分组标题条 + 它自己的表情包 + 子节点 */
-function nodeSections(node, q) {
-  if (q && matchCount(node, q) === 0) return [];
-  const out = [];
-  if (node.children.length) out.push(groupHead(node));
-  if (node.pack) out.push(packSection(node.pack, q));
-  for (const c of node.children) out.push(...nodeSections(c, q));
-  return out.filter(Boolean);
 }
 
 function render() {
-  const app = $('#app');
   const q = state.query.trim().toLowerCase();
-  const total = state.packs.reduce((n, p) => n + p.stickers.length, 0);
-  const tops = state.tree.root.children;
-  if (state.active !== 'all' && !state.tree.byPath.has(state.active)) state.active = 'all';
-  const shown = state.active === 'all' ? tops : [state.tree.byPath.get(state.active)];
-  const sections = shown.flatMap((n) => nodeSections(n, q));
-
-  const children = [
-    h(
-      'div',
-      { class: 'hero' },
-      h('h1', {}, state.site.title),
-      state.site.description ? h('p', {}, state.site.description) : h('p', {}, '点一下表情就复制到剪贴板，去聊天窗口粘贴；也可以一键导入到表情包管理器，之后自动同步更新。'),
-      h(
-        'div',
-        { class: 'actions' },
-        h('button', { class: 'btn primary', onClick: () => importToApp(packUrl(null), state.site.title), disabled: total === 0 }, icon('rocket'), '一键导入全部'),
-        h('button', { class: 'btn', onClick: () => copySubscription(packUrl(null)), disabled: total === 0 }, icon('link'), '复制订阅地址'),
-        h('a', { class: `btn${total ? '' : ' disabled'}`, href: '/all.zip' }, icon('download'), '下载全部 zip'),
-        h('a', { class: 'btn ghost', href: RELEASES_URL, target: '_blank', rel: 'noopener' }, '获取表情包管理器'),
-      ),
-    ),
-    tops.length > 1
-      ? h(
-          'nav',
-          { class: 'tabs', role: 'tablist' },
-          h('button', { class: `chip${state.active === 'all' ? ' active' : ''}`, role: 'tab', onClick: () => ((state.active = 'all'), render()) }, '全部', h('span', { class: 'count num' }, total)),
-          ...tops.map((n) =>
-            h(
-              'button',
-              { class: `chip${state.active === n.path ? ' active' : ''}`, role: 'tab', title: n.children.length ? `分组：${countPacks(n)} 个表情包` : undefined, onClick: () => ((state.active = n.path), render()) },
-              n.children.length ? icon('folder', 13) : null,
-              n.name,
-              h('span', { class: 'count num' }, n.count),
-            ),
-          ),
-        )
-      : null,
-    sections.length
-      ? sections
-      : h('div', { class: 'empty' }, h('h3', {}, total === 0 ? '还没有表情包' : '没有匹配的表情'), h('p', {}, total === 0 ? '管理员登录后就能上传。' : '换个关键词试试。')),
-    h(
-      'footer',
-      { class: 'foot' },
-      h('span', {}, `共 ${state.packs.length} 个表情包、${total} 个表情`),
-      h('a', { href: '/manifest.json' }, '订阅清单'),
-      h('a', { href: 'https://github.com/Lony225/emoji-manager', target: '_blank', rel: 'noopener' }, '表情包管理器'),
-      h('span', {}, '点击表情复制，右键更多操作'),
-    ),
-  ];
+  const r = route();
+  let body;
+  if (q) body = searchView(q);
+  else if (r.kind === 'node' && state.tree.byPath.has(r.path)) body = nodeView(state.tree.byPath.get(r.path));
+  else body = homeView();
   // 数组要摊平、null 要去掉，否则 replaceChildren 会把它们当成文本
-  app.replaceChildren(...children.flat().filter(Boolean));
+  $('#app').replaceChildren(...[...body, footer()].flat(2).filter(Boolean));
 }
 
 let searchTimer;

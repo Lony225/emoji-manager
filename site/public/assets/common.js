@@ -286,3 +286,13 @@ export function groupManifestUrl(path) {
 export function groupZipUrl(path) {
   return `/groups/${encodePath(path)}.zip`;
 }
+
+/** <img> 的 error 处理：缩略图加载失败就换成原图（只换一次） */
+export function fallbackToOriginal(s) {
+  return (e) => {
+    const img = e.target;
+    if (img.dataset.fallback) return;
+    img.dataset.fallback = '1';
+    img.src = s.url;
+  };
+}
