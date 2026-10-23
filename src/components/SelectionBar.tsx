@@ -1,17 +1,20 @@
 import { useLibraryStore } from '../core/store';
 import { useUiStore } from '../ui/uiStore';
-import { confirmDeleteStickers, copyManyWithFeedback, openExportDialog, startRename } from '../ui/actions';
+import { confirmDeleteStickers, copyManyWithFeedback, getVisibleOrder, openExportDialog, startRename } from '../ui/actions';
 import { platform } from '../platform';
 import { Icon } from '../ui/icons';
 
 export function SelectionBar() {
   const selection = useUiStore((s) => s.selection);
   const clearSelection = useUiStore((s) => s.clearSelection);
+  const select = useUiStore((s) => s.select);
   const openDialog = useUiStore((s) => s.openDialog);
   const toggleFavorite = useLibraryStore((s) => s.toggleFavorite);
   if (selection.size === 0) return null;
   const ids = Array.from(selection);
   const n = selection.size;
+  const visible = getVisibleOrder();
+  const allSelected = visible.length > 0 && visible.every((id) => selection.has(id));
 
   const favoriteAll = () => {
     const stickers = useLibraryStore.getState().stickers.filter((s) => selection.has(s.id));
@@ -21,7 +24,14 @@ export function SelectionBar() {
 
   return (
     <div className="selectionbar">
-      <span className="summary num">已选 {n} 个</span>
+      <span className="summary num">
+        已选 {n} 个{visible.length > n ? ` / 共 ${visible.length} 个` : ''}
+      </span>
+      {!allSelected && (
+        <button className="btn sm" onClick={() => select(visible, 'replace')} title="选中当前显示的全部表情（Ctrl+A）">
+          <Icon name="selectAll" size={15} /> 全选
+        </button>
+      )}
       {platform.capabilities.copyFile && (
         <button className="btn sm primary" onClick={() => void copyManyWithFeedback(ids)} title="作为多个文件一起复制，粘贴即可发送">
           <Icon name="copy" size={15} /> 复制{n > 1 ? ` ${n} 个` : ''}

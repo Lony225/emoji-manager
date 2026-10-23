@@ -33,6 +33,7 @@ const PATHS = {
   play: 'M8 5v14l11-7z',
   pause: 'M7 5h4v14H7zM13 5h4v14h-4z',
   rename: 'M4 7h4M4 17h4M6 7v10M11 5h9v14h-9M14 9h3M14 12h3M14 15h3',
+  selectAll: 'M4 4h16v16H4zM8 12l3 3 5-6',
   smile: 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM9 10h.01M15 10h.01M8.5 14a4 4 0 0 0 7 0',
   clock: 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM12 7v5l3 2',
   pin: 'M9 4h6l-1 6 3 3H7l3-3zM12 13v7',

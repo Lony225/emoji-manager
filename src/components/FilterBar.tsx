@@ -4,6 +4,7 @@ import { useUiStore } from '../ui/uiStore';
 import { categoryCounts, categoryCountsWithChildren, categoryPath, childCategories, type SortKey } from '../core/selectors';
 import type { GridSize } from '../core/types';
 import { Icon } from '../ui/icons';
+import { getVisibleOrder } from '../ui/actions';
 import { useAutoPaused } from './StickerGrid';
 
 const SIZES: { key: GridSize; label: string }[] = [
@@ -14,6 +15,11 @@ const SIZES: { key: GridSize; label: string }[] = [
 
 export function FilterBar({ count }: { count: number }) {
   const filter = useUiStore((s) => s.filter);
+  const selectionSize = useUiStore((s) => s.selection.size);
+  const select = useUiStore((s) => s.select);
+  const clearSelection = useUiStore((s) => s.clearSelection);
+  // 当前显示的表情是否已经全部选中（选了别处的表情时不算）
+  const allSelected = count > 0 && selectionSize >= count && getVisibleOrder().every((id) => useUiStore.getState().selection.has(id));
   const toggleTag = useUiStore((s) => s.toggleTag);
   const setSort = useUiStore((s) => s.setSort);
   const setView = useUiStore((s) => s.setView);
@@ -99,6 +105,15 @@ export function FilterBar({ count }: { count: number }) {
           </div>
         )}
         <span className="spacer" />
+        {count > 0 && (
+          <button
+            className={`btn sm select-all${allSelected ? ' active' : ''}`}
+            onClick={() => (allSelected ? clearSelection() : select(getVisibleOrder(), 'replace'))}
+            title={allSelected ? '取消全选（Esc）' : `选中当前显示的 ${count} 个表情（Ctrl+A）`}
+          >
+            <Icon name="selectAll" size={15} /> {allSelected ? '取消全选' : '全选'}
+          </button>
+        )}
         {view.kind === 'recent' ? (
           <span className="hint">按最近使用时间排列</span>
         ) : (

@@ -410,6 +410,19 @@ async function main() {
     await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: startX, y: geo.first.top + 6, button: 'left', buttons: 0, clickCount: 1 });
     await sleep(100);
     assertEq('点击空白处取消选择', await cdp.eval('window.__uiStore.getState().selection.size'), 0);
+    // 全选按钮：筛选条上的「全选」选中当前显示的全部；选了一部分后底部多选条也有「全选」
+    const visibleCount = await cdp.eval("document.querySelectorAll('.card').length");
+    await cdp.eval("document.querySelector('.filterbar .select-all').click()");
+    assertEq('筛选条「全选」选中当前显示的全部表情', await cdp.eval('window.__uiStore.getState().selection.size'), visibleCount);
+    assertEq('全选后按钮变为「取消全选」', await cdp.eval("document.querySelector('.filterbar .select-all')?.textContent.trim()"), '取消全选');
+    check('全选后多选条不再显示「全选」', (await cdp.eval("Array.from(document.querySelectorAll('.selectionbar .btn')).some(b => b.textContent.trim() === '全选')")) === false);
+    await cdp.eval("document.querySelector('.filterbar .select-all').click()");
+    assertEq('「取消全选」清空选择', await cdp.eval('window.__uiStore.getState().selection.size'), 0);
+    await cdp.eval("window.__uiStore.getState().select([window.__emojiStore.getState().stickers[0].id], 'replace')");
+    await cdp.waitFor("Array.from(document.querySelectorAll('.selectionbar .btn')).some(b => b.textContent.trim() === '全选') ? 1 : 0", 3000, '多选条出现「全选」');
+    await cdp.eval("Array.from(document.querySelectorAll('.selectionbar .btn')).find(b => b.textContent.trim() === '全选').click()");
+    assertEq('多选条「全选」选中全部', await cdp.eval('window.__uiStore.getState().selection.size'), visibleCount);
+    await cdp.eval('window.__uiStore.getState().clearSelection()');
     await cdp.eval("window.__emojiStore.getState().updateSettings({ gridSize: 'medium' })");
 
     // ---- 批量复制（多个文件一起放进剪贴板）
