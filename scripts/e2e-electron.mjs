@@ -648,6 +648,113 @@ async function main() {
     await cdp.eval("Array.from(document.querySelectorAll('.dialog footer button')).find(b => b.textContent.trim() === '改名').click()");
     assertEq('批量改名生效', JSON.stringify(await cdp.eval("window.__emojiStore.getState().stickers.filter(s => s.tags.includes('测试标签')).map(s => s.name).sort()")), JSON.stringify(['喵 1', '喵 2', '喵 3']));
 
+
+    // ---- 粘贴 / 拖入
+    console.log('\n粘贴 / 拖入');
+    await cdp.eval("window.__uiStore.getState().setView({ kind: 'all' })");
+    // 在页面里现画一张独一无二的 PNG（免得和已有表情按内容去重）
+    await cdp.eval(`window.__e2ePng = async (color) => { const c = document.createElement('canvas'); c.width = 48; c.height = 48; const x = c.getContext('2d'); x.fillStyle = color; x.fillRect(0, 0, 48, 48); x.fillStyle = '#000'; x.fillRect(12, 12, 24, 24); const b = await new Promise((r) => c.toBlob(r, 'image/png')); return new Uint8Array(await b.arrayBuffer()); }`);
+    // 1) “粘贴”按钮：图片先放进系统剪贴板，再由主进程触发粘贴命令 → 页面收到带图片的 paste 事件 → 在“全部”里先问放到哪个分类
+    await cdp.eval("window.__e2ePng('#ff8800').then((b) => window.emojiBridge.copyImagePng(b))");
+    await cdp.eval('window.__emojiActions.pasteFromClipboard()');
+    const pasteAsk = await cdp.waitFor("document.querySelector('.dialog h3')?.textContent.includes('放到哪个分类') ? 1 : 0", 8000, '粘贴后询问分类').catch(() => 0);
+    check('点“粘贴”后收到剪贴板里的图片并询问分类', pasteAsk === 1);
+    await cdp.eval("Array.from(document.querySelectorAll('.pick-list button')).find((b) => b.textContent.trim() === '狗狗').click()");
+    const pasted = await cdp.waitFor("(() => { const s = window.__emojiStore.getState(); const x = s.stickers.find((t) => t.name === '粘贴的表情 1'); return x ? JSON.stringify({ cat: s.categories.find((c) => c.id === x.categoryId)?.name, ext: x.ext }) : ''; })()", 8000, '粘贴的表情出现').catch(() => '');
+    check('剪贴板图片存为表情并放进所选分类', !!pasted && JSON.parse(pasted).cat === '狗狗' && JSON.parse(pasted).ext === 'png', pasted);
+    // 2) 在分类视图里粘贴：直接放进当前分类，不再询问
+    await cdp.eval(`window.__uiStore.getState().setView({ kind: 'category', id: '${dogCatId}' })`);
+    await cdp.eval("window.__e2ePng('#0088ff').then((b) => window.emojiBridge.copyImagePng(b))");
+    await cdp.eval('window.__emojiActions.pasteFromClipboard()');
+    const pasted2 = await cdp.waitFor(`(() => window.__emojiStore.getState().stickers.filter((t) => t.name.startsWith('粘贴的表情') && t.categoryId === '${dogCatId}').length === 2 ? 1 : 0)()`, 8000, '分类视图里粘贴直接放入').catch(() => 0);
+    check('在分类里粘贴直接存进该分类', pasted2 === 1 && (await cdp.eval("document.querySelectorAll('.dialog').length")) === 0);
+    // 3) 粘贴网页片段：<img src=…gif> → 由主进程下载原图，GIF 保留
+    const gifUrl = `${sampleUrl}/images/cat-sad.gif`;
+    await cdp.eval(`(() => { const dt = new DataTransfer(); dt.setData('text/html', '<meta charset="utf-8"><img src="${gifUrl}" alt="">'); document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); })()`);
+    const fromHtml = await cdp.waitFor(`(() => { const x = window.__emojiStore.getState().stickers.find((t) => t.name === 'cat-sad' && t.source.type === 'local'); return x ? x.ext + ':' + (x.categoryId === '${dogCatId}') : ''; })()`, 15000, '网页图片下载导入').catch(() => '');
+    assertEq('粘贴网页里的 <img> 会下载原图（GIF 保留动画格式）', fromHtml, 'gif:true');
+    // 位图和 <img> 同时在剪贴板里（浏览器里“复制图片”就是这样）：优先抓原图而不是用位图
+    await cdp.eval(`(async () => { const png = await window.__e2ePng('#22aa22'); const dt = new DataTransfer(); dt.items.add(new File([png], 'image.png', { type: 'image/png' })); dt.setData('text/html', '<img src="${sampleUrl}/images/dog-sleepy.gif">'); document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); })()`);
+    const preferOriginal = await cdp.waitFor("window.__emojiStore.getState().stickers.some((t) => t.name === 'dog-sleepy' && t.source.type === 'local' && t.ext === 'gif') ? 1 : 0", 15000, '优先原图').catch(() => 0);
+    check('剪贴板里同时有位图和网页图片地址时优先下载原图', preferOriginal === 1 && (await cdp.eval("window.__emojiStore.getState().stickers.filter((t) => t.name.startsWith('粘贴的表情')).length")) === 2);
+    // 没有图片的粘贴（纯文字）不处理也不报错
+    await cdp.eval("(() => { const dt = new DataTransfer(); dt.setData('text/plain', '只是文字'); document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); })()");
+    await sleep(200);
+    check('粘贴纯文字时不报错', (await cdp.eval("window.__uiStore.getState().toasts.filter((t) => t.kind === 'error').length")) === 0);
+    // 4) 拖到侧栏分类上：覆盖层提示目标分类、分类行高亮，松开直接存进那个分类
+    await cdp.eval("window.__uiStore.getState().setView({ kind: 'all' })");
+    // 用“狗狗”当落点：它本来就有本地表情，不影响后面“删除订阅后空分类消失”的检查
+    const catCatId = dogCatId;
+    const dropInfo = await cdp.eval(`(async () => {
+      const png = await window.__e2ePng('#aa22aa');
+      const dt = new DataTransfer();
+      dt.items.add(new File([png], '拖入测试.png', { type: 'image/png' }));
+      const row = document.querySelector('.sidebar .side-item[data-drop-category="${catCatId}"]');
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const fire = (type) => row.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+      fire('dragenter');
+      await wait(60);
+      fire('dragover');
+      await wait(60);
+      const overlay = document.querySelector('.drop-overlay')?.textContent ?? '';
+      const rowClass = row.className;
+      fire('drop');
+      await wait(60);
+      return { overlay, rowClass, overlayAfter: !!document.querySelector('.drop-overlay') };
+    })()`);
+    check('拖到分类上时覆盖层提示目标分类、分类行高亮', /狗狗/.test(dropInfo.overlay) && /drop-into/.test(dropInfo.rowClass) && !dropInfo.overlayAfter, JSON.stringify(dropInfo));
+    const dropped = await cdp.waitFor(`(() => { const x = window.__emojiStore.getState().stickers.find((t) => t.name === '拖入测试'); return x ? (x.categoryId === '${catCatId}' ? 'ok' : 'wrong') : ''; })()`, 8000, '拖入的表情').catch(() => '');
+    check('图片拖到侧栏分类上直接存进该分类', dropped === 'ok', dropped);
+
+    // ---- 制作表情（加文字）
+    console.log('\n制作表情');
+    const srcPng = await cdp.eval("(() => { const x = window.__emojiStore.getState().stickers.find((t) => t.name === '拖入测试'); return { id: x.id, categoryId: x.categoryId, hash: x.hash }; })()");
+    await cdp.eval(`window.__emojiActions.openMaker({ type: 'sticker', id: '${srcPng.id}' })`);
+    await cdp.waitFor("document.querySelector('.dialog.maker .maker-frame canvas') ? 1 : 0", 8000, '制作对话框加载图片');
+    check('制作对话框打开并显示预览', true);
+    check('没有文字时不能保存', await cdp.eval("document.querySelector('.maker-save').disabled"));
+    await cdp.eval("(() => { const ta = document.querySelector('.maker-text'); const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; setter.call(ta, '测试文字'); ta.dispatchEvent(new Event('input', { bubbles: true })); })()");
+    await sleep(150);
+    const overlayDrawn = await cdp.eval("(() => { const c = document.querySelector('.maker-frame canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return { w: c.width, h: c.height, painted: n, name: document.getElementById('maker-name').value }; })()");
+    check('文字层按原图尺寸绘制且画上了文字', overlayDrawn.w === 48 && overlayDrawn.h === 48 && overlayDrawn.painted > 20, JSON.stringify(overlayDrawn));
+    assertEq('新表情名称默认用文字', overlayDrawn.name, '测试文字');
+    // 用真实鼠标把文字从下方拖到上方 → 位置变成“自定义”
+    const frameRect = await cdp.eval("(() => { const r = document.querySelector('.maker-frame').getBoundingClientRect(); return { x: r.left + r.width / 2, y1: r.top + r.height * 0.85, y2: r.top + r.height * 0.25 }; })()");
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: frameRect.x, y: frameRect.y1 });
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: frameRect.x, y: frameRect.y1, button: 'left', buttons: 1, clickCount: 1 });
+    for (let i = 1; i <= 4; i++) {
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: frameRect.x, y: frameRect.y1 + ((frameRect.y2 - frameRect.y1) * i) / 4, button: 'left', buttons: 1 });
+      await sleep(30);
+    }
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: frameRect.x, y: frameRect.y2, button: 'left', buttons: 0, clickCount: 1 });
+    await sleep(100);
+    const anchorNow = await cdp.eval("Array.from(document.querySelectorAll('.dialog.maker .segmented button.active')).map((b) => b.textContent)");
+    check('拖动预览里的文字后位置变为“自定义”', anchorNow.includes('自定义'), JSON.stringify(anchorNow));
+    const makerShot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    writeFileSync(path.join(ROOT, '.e2e-tmp', 'screenshot-maker.png'), Buffer.from(makerShot.data, 'base64'));
+    await cdp.eval("document.querySelector('.maker-save').click()");
+    const made = await cdp.waitFor("(() => { const x = window.__emojiStore.getState().stickers.find((t) => t.name === '测试文字'); return x ? JSON.stringify({ ext: x.ext, cat: x.categoryId, hash: x.hash }) : ''; })()", 15000, '生成的新表情').catch(() => '');
+    check('保存为新表情（PNG，分类与来源相同，内容不同）', !!made && JSON.parse(made).ext === 'png' && JSON.parse(made).cat === srcPng.categoryId && JSON.parse(made).hash !== srcPng.hash, made);
+    check('制作完成后对话框关闭', (await cdp.eval("document.querySelectorAll('.dialog').length")) === 0);
+    const madeSize = await cdp.eval("(async () => { const s = window.__emojiStore.getState().stickers.find((t) => t.name === '测试文字'); if (!s) return [0, 0]; const i = new Image(); await new Promise((res, rej) => { i.onload = res; i.onerror = rej; i.src = 'sticker://library/' + s.file; }); return [i.naturalWidth, i.naturalHeight]; })()");
+    assertEq('输出尺寸与原图一致', JSON.stringify(madeSize), JSON.stringify([48, 48]));
+    // 动图：逐帧加字，重新编成 GIF
+    const gifSticker = await cdp.eval("(() => { const x = window.__emojiStore.getState().stickers.find((t) => t.ext === 'gif' && t.source.type === 'local'); return x ? { id: x.id, file: x.file } : null; })()");
+    check('有本地 GIF 可用于制作', !!gifSticker);
+    const srcFrames = await cdp.eval(`(async () => { const r = await fetch('sticker://library/${gifSticker.file}'); const d = new ImageDecoder({ data: await r.arrayBuffer(), type: 'image/gif' }); await d.tracks.ready; await d.completed; const n = d.tracks.selectedTrack.frameCount; d.close(); return n; })()`);
+    check('ImageDecoder 可用且原 GIF 是多帧', srcFrames > 1, String(srcFrames));
+    await cdp.eval(`window.__emojiActions.openMaker({ type: 'sticker', id: '${gifSticker.id}' })`);
+    await cdp.waitFor("document.querySelector('.dialog.maker .maker-frame canvas') && /动图/.test(document.querySelector('.dialog.maker footer .hint')?.textContent ?? '') ? 1 : 0", 8000, '制作对话框识别动图');
+    check('识别为动图并提示输出 GIF', /GIF/.test(await cdp.eval("document.querySelector('.dialog.maker footer .hint').textContent")));
+    await cdp.eval("(() => { const ta = document.querySelector('.maker-text'); const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; setter.call(ta, '动图文字'); ta.dispatchEvent(new Event('input', { bubbles: true })); })()");
+    await cdp.eval("Array.from(document.querySelectorAll('.maker-presets .chip')).find((b) => b.textContent === '黄字黑边').click()");
+    await sleep(100);
+    await cdp.eval("document.querySelector('.maker-save').click()");
+    const madeGif = await cdp.waitFor("(() => { const x = window.__emojiStore.getState().stickers.find((t) => t.name === '动图文字'); return x ? x.file : ''; })()", 60000, '生成的 GIF').catch(() => '');
+    check('动图加字后保存为 GIF', /\.gif$/.test(madeGif), madeGif);
+    const gifInfo = await cdp.eval(`(async () => { if (!'${madeGif}') return { head: '' }; const r = await fetch('sticker://library/${madeGif}'); const buf = await r.arrayBuffer(); const head = String.fromCharCode(...new Uint8Array(buf.slice(0, 6))); const d = new ImageDecoder({ data: buf, type: 'image/gif' }); await d.tracks.ready; await d.completed; const n = d.tracks.selectedTrack.frameCount; const { image } = await d.decode({ frameIndex: 0 }); const w = image.displayWidth, h = image.displayHeight; image.close(); d.close(); return { head, frames: n, w, h, bytes: buf.byteLength }; })()`);
+    check('生成的 GIF 仍是多帧动画、尺寸不变', gifInfo.head === 'GIF89a' && gifInfo.frames > 1 && gifInfo.frames <= srcFrames && gifInfo.w === 160 && gifInfo.h === 160, JSON.stringify({ ...gifInfo, srcFrames }));
+
     const totalAfterImports = await cdp.eval('window.__emojiStore.getState().stickers.length');
     const catsAfterImports = await cdp.eval('window.__emojiStore.getState().categories.length');
     const nestedBefore = await cdp.eval("window.__emojiStore.getState().categories.filter(c => c.parentId).length");

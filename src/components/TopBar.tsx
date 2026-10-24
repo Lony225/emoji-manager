@@ -1,7 +1,7 @@
 import { useEffect, useRef, type MouseEvent } from 'react';
 import { useLibraryStore } from '../core/store';
 import { useUiStore } from '../ui/uiStore';
-import { importImages, pickAndImportFolders, pickAndImportPackage, pickFiles } from '../ui/actions';
+import { importImages, pasteFromClipboard, pickAndImportFolders, pickAndImportPackage, pickAndMake, pickFiles } from '../ui/actions';
 import { useNarrow } from '../ui/hooks';
 import { platform } from '../platform';
 import { SUBSCRIPTIONS_ENABLED } from '../core/features';
@@ -55,6 +55,9 @@ export function TopBar() {
           onSelect: () => void pickAndImportFolders(),
         },
         { label: '导入表情包压缩包（zip）…', icon: 'inbox', onSelect: () => void pickAndImportPackage() },
+        { label: '粘贴剪贴板里的图片（Ctrl+V）', icon: 'paste', onSelect: () => void pasteFromClipboard() },
+        { label: '', separator: true },
+        { label: '选一张图片加文字，做成表情…', icon: 'text', onSelect: () => void pickAndMake() },
       ],
     });
   };
@@ -100,7 +103,7 @@ export function TopBar() {
         )}
       </div>
       <span className="spacer" />
-      <button className="btn" onClick={onImport} title="导入本地图片">
+      <button className="btn" onClick={onImport} title="导入图片 / 文件夹 / zip，粘贴剪贴板，制作表情">
         <Icon name="image" /> {!narrow && '导入'}
       </button>
       {SUBSCRIPTIONS_ENABLED && (

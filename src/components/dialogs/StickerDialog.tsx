@@ -5,7 +5,8 @@ import { flattenTree, tagCounts } from '../../core/selectors';
 import { formatBytes } from '../../core/images';
 import { platform } from '../../platform';
 import { SUBSCRIPTIONS_ENABLED } from '../../core/features';
-import { confirmDeleteStickers } from '../../ui/actions';
+import { confirmDeleteStickers, openMaker } from '../../ui/actions';
+import { Icon } from '../../ui/icons';
 import { useFileUrl } from '../../ui/hooks';
 import { Modal } from '../Dialog';
 import { TagInput } from '../TagInput';
@@ -37,9 +38,14 @@ export function StickerDialog({ id }: { id: string }) {
       onClose={closeDialog}
       footer={
         <>
-          <button className="btn danger left" onClick={() => confirmDeleteStickers([id])}>
-            删除
-          </button>
+          <span className="left row">
+            <button className="btn danger" onClick={() => confirmDeleteStickers([id])}>
+              删除
+            </button>
+            <button className="btn" onClick={() => openMaker({ type: 'sticker', id })} title="在这张图上加文字，做成新表情">
+              <Icon name="text" size={15} /> 加文字…
+            </button>
+          </span>
           <button className="btn" onClick={closeDialog}>
             取消
           </button>

@@ -563,3 +563,160 @@ kbd {
   margin-right: auto;
   align-self: center;
 }
+
+/* ---- 制作表情（加文字） ---- */
+.dialog.maker {
+  max-width: 920px;
+}
+
+.maker-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .maker-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.maker-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.maker-stage {
+  height: 360px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  background: conic-gradient(var(--line) 25%, transparent 0 50%, var(--line) 0 75%, transparent 0) 0 0 / 20px 20px;
+}
+
+.maker-frame {
+  position: relative;
+  cursor: move;
+  touch-action: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.maker-frame img,
+.maker-frame canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.maker-frame img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.maker-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.maker-controls .segmented {
+  flex-wrap: wrap;
+}
+
+.maker-text {
+  height: auto;
+  min-height: 70px;
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.maker-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.maker-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px 14px;
+  align-items: start;
+}
+
+.range-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.range-row input[type='range'] {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.range-row .num {
+  text-align: right;
+  color: var(--ink-3);
+}
+
+.swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
+.swatch.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.swatches input[type='color'] {
+  width: 30px;
+  height: 24px;
+  padding: 1px 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--tile);
+  cursor: pointer;
+}
+
+.maker-toggles {
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.maker-colors {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

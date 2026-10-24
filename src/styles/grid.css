@@ -295,10 +295,21 @@
   background: var(--accent-soft);
   display: grid;
   place-items: center;
+  padding: 24px;
+  text-align: center;
   font-size: 18px;
   font-weight: 700;
+  line-height: 1.5;
   color: var(--ink);
   pointer-events: none;
+}
+
+.drop-overlay small {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
 }
 
 /* ---- 带名称的表情格 ---- */

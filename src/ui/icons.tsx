@@ -40,6 +40,8 @@ const PATHS = {
   pinOff: 'M9 4h6l-1 6 3 3H7l3-3zM12 13v7M4 4l16 16',
   window: 'M4 5h16v14H4zM4 9h16',
   keyboard: 'M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M7 14h10',
+  paste: 'M9 3h6v3H9zM15 4h3v16H6V4h3M9 11h6M9 15h4',
+  text: 'M5 7V4h14v3M12 4v16M9 20h6',
 } as const;
 
 export type IconName = keyof typeof PATHS;

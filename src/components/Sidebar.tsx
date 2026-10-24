@@ -15,7 +15,7 @@ import {
 import type { Category, Subscription } from '../core/types';
 import { errorMessage } from '../core/subscription/sync';
 import { SUBSCRIPTIONS_ENABLED } from '../core/features';
-import { exportCategory } from '../ui/actions';
+import { exportCategory, isDragAcceptable } from '../ui/actions';
 import { useNarrow, syncSummary } from '../ui/hooks';
 import { Icon, Spinner, type IconName } from '../ui/icons';
 
@@ -68,7 +68,11 @@ export function Sidebar() {
     setDragId(c.id);
   };
   const onDragOver = (e: DragEvent, c: Category) => {
-    if (!dragId) return;
+    if (!dragId) {
+      // 文件 / 网页图片拖到分类上：高亮它；导入由窗口级的拖放处理统一完成（落点带 data-drop-category）
+      if (isDragAcceptable(e.nativeEvent)) setOver((o) => (o?.id === c.id && o.pos === 'into' ? o : { id: c.id, pos: 'into' }));
+      return;
+    }
     const pos = dropPosFor(e.clientY, e.currentTarget.getBoundingClientRect());
     const target = resolveDrop(categories, dragId, c.id, pos);
     if (!target) {
@@ -286,7 +290,8 @@ export function Sidebar() {
         <button
           className={`side-item${depth ? ' child' : ''}${sameView(view, { kind: 'category', id: c.id }) ? ' active' : ''}${dropClass(c.id)}`}
           style={depth ? { paddingLeft: 10 + depth * 18 } : undefined}
-          title={hasChildren ? '双击展开 / 收起；拖动可调整顺序；拖到某个分类上可变成它的子分类' : '拖动可调整顺序；拖到某个分类上可变成它的子分类'}
+          title={hasChildren ? '双击展开 / 收起；拖动可调整顺序；拖到某个分类上可变成它的子分类；把图片拖到这里直接存进来' : '拖动可调整顺序；拖到某个分类上可变成它的子分类；把图片拖到这里直接存进来'}
+          data-drop-category={c.id}
           draggable
           onDragStart={(e) => onDragStart(e, c)}
           onDragOver={(e) => onDragOver(e, c)}

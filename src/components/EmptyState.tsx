@@ -1,6 +1,6 @@
 import { useLibraryStore } from '../core/store';
 import { useUiStore } from '../ui/uiStore';
-import { importImages, pickFiles } from '../ui/actions';
+import { importImages, pasteFromClipboard, pickFiles } from '../ui/actions';
 import { Icon } from '../ui/icons';
 import { SUBSCRIPTIONS_ENABLED } from '../core/features';
 
@@ -48,6 +48,9 @@ export function EmptyState({ filtered }: { filtered: boolean }) {
           }
         >
           <Icon name="image" /> 导入图片
+        </button>
+        <button className="btn" onClick={() => void pasteFromClipboard()} title="把剪贴板里的图片存为表情（Ctrl+V）">
+          <Icon name="paste" /> 粘贴剪贴板图片
         </button>
         {SUBSCRIPTIONS_ENABLED && (
           <button className="btn primary" onClick={() => openDialog({ kind: 'subscriptions', focusAdd: true })}>

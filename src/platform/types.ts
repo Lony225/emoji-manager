@@ -34,6 +34,11 @@ export interface DownloadResult {
   contentType: string | null;
 }
 
+export interface FetchBytesResult {
+  bytes: Uint8Array;
+  contentType: string | null;
+}
+
 export type PlatformKind = 'electron' | 'web' | 'capacitor';
 export type OsKind = 'windows' | 'mac' | 'linux' | 'android' | 'ios' | 'unknown';
 /** 当前渲染进程是主窗口还是桌面浮窗 */
@@ -103,9 +108,16 @@ export interface Platform {
   // —— 网络 ——
   fetchText(url: string, timeoutMs?: number): Promise<FetchTextResult>;
   download(url: string, rel: string, timeoutMs?: number): Promise<DownloadResult>;
+  /** 把一个 http(s) 地址的内容读进内存（导入从网页复制 / 拖来的图片） */
+  fetchBytes(url: string, timeoutMs?: number): Promise<FetchBytesResult>;
 
   // —— 动作 ——
   copyImagePng(png: Uint8Array): Promise<void>;
+  /**
+   * 触发一次系统粘贴：桌面端由主进程执行“粘贴”命令，页面会收到带剪贴板内容的 paste 事件（含文件）；
+   * 返回 false 表示这个平台做不到，调用方要自己用 navigator.clipboard 读
+   */
+  triggerPaste(): Promise<boolean>;
   copyFile(rel: string): Promise<void>;
   /** 把多个文件一起放进剪贴板 */
   copyFiles(rels: string[]): Promise<void>;

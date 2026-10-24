@@ -12,12 +12,14 @@ import { Spinner } from '../../ui/icons';
 interface Props {
   folders: PickedFolder[];
   parentName?: string;
+  /** 拖到侧栏某个分类上时：默认放到这个分类下 */
+  parentId?: string;
 }
 
 type Mode = 'top' | 'under' | 'newParent';
 
 /** 导入一个或多个文件夹：每个文件夹成为一个分类，可放在任意分类下；子文件夹可逐级成为子分类 */
-export function ImportFolderDialog({ folders, parentName }: Props) {
+export function ImportFolderDialog({ folders, parentName, parentId: dropParentId }: Props) {
   const closeDialog = useUiStore((s) => s.closeDialog);
   const toast = useUiStore((s) => s.toast);
   const setView = useUiStore((s) => s.setView);
@@ -40,7 +42,7 @@ export function ImportFolderDialog({ folders, parentName }: Props) {
     return { names: Array.from(names), levels: deepest - 1 };
   }, [folders]);
 
-  const currentId = currentCategoryId();
+  const currentId = dropParentId ?? currentCategoryId();
   const multi = folders.length > 1;
 
   const [addToCategory, setAddToCategory] = useState(true);

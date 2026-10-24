@@ -9,9 +9,10 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  className?: string;
 }
 
-export function Modal({ title, onClose, children, footer, wide }: ModalProps) {
+export function Modal({ title, onClose, children, footer, wide, className }: ModalProps) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -29,7 +30,7 @@ export function Modal({ title, onClose, children, footer, wide }: ModalProps) {
 
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} className={`dialog${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={ref} className={`dialog${wide ? ' wide' : ''}${className ? ` ${className}` : ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <header>
           <h3>{title}</h3>
           <button className="btn ghost icon-only" onClick={onClose} aria-label="关闭">

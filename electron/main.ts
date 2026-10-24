@@ -913,6 +913,32 @@ function registerIpc(): void {
     }
   });
 
+  ipcMain.handle('net:fetchBytes', async (_e, url: string, timeoutMs = 20000) => {
+    assertHttpUrl(url);
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), timeoutMs);
+    try {
+      const res = await net.fetch(url, {
+        signal: ac.signal,
+        headers: { 'user-agent': USER_AGENT, accept: 'image/*,*/*;q=0.8' },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const declared = Number(res.headers.get('content-length') ?? 0);
+      if (declared > MAX_DOWNLOAD) throw new Error('文件超过 100 MB');
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.byteLength > MAX_DOWNLOAD) throw new Error('文件超过 100 MB');
+      return { bytes, contentType: res.headers.get('content-type') };
+    } catch (e) {
+      throw netError(e);
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  // 点“粘贴”按钮时由主进程执行粘贴命令：和按 Ctrl+V 一样，页面会收到带剪贴板里图片 / 文件的 paste 事件
+  ipcMain.handle('clipboard:paste', async (e) => {
+    e.sender.paste();
+  });
   ipcMain.handle('clipboard:copyImagePng', async (_e, png: Uint8Array) => {
     if (!(png instanceof Uint8Array) || png.byteLength < 8) throw new Error('图片数据无效');
     // Electron 45 起剪贴板 API 与浏览器的 navigator.clipboard 一致

@@ -168,6 +168,24 @@ export function createWebPlatform(): Platform {
         clearTimeout(timer);
       }
     },
+    async fetchBytes(url, timeoutMs = 20000) {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { signal: ac.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (bytes.length > 100 * 1024 * 1024) throw new Error('文件超过 100 MB');
+        return { bytes, contentType: res.headers.get('content-type') };
+      } catch (e) {
+        throw networkHint(e);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    async triggerPaste() {
+      return false;
+    },
     async copyImagePng(png) {
       if (!navigator.clipboard || !('write' in navigator.clipboard)) throw new Error('当前浏览器不支持复制图片');
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': toBlob(png, 'image/png') })]);

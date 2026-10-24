@@ -3,6 +3,7 @@ import type { Filter, SortKey, View } from '../core/selectors';
 import type { PickedFolder } from '../platform/types';
 import type { LatestRelease } from '../core/update';
 import type { IconName } from './icons';
+import type { MakerSource } from './maker';
 
 export type DialogState =
   | { kind: 'none' }
@@ -37,10 +38,12 @@ export type DialogState =
       hint?: string;
       onPick: (categoryId: string | null, name: string) => void;
     }
-  | { kind: 'importFolders'; folders: PickedFolder[]; parentName?: string }
+  | { kind: 'importFolders'; folders: PickedFolder[]; parentName?: string; parentId?: string }
   | { kind: 'exportPackage'; ids: string[]; defaultName: string }
   | { kind: 'categoryParent'; id: string }
-  | { kind: 'update'; release: LatestRelease; current: string };
+  | { kind: 'update'; release: LatestRelease; current: string }
+  /** 制作表情：在一张图上加文字 */
+  | { kind: 'maker'; source: MakerSource };
 
 export interface MenuItem {
   label: string;

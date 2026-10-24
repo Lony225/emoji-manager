@@ -1,4 +1,4 @@
-import type { DesktopSettings, DownloadResult, FetchTextResult, UsageMap, WindowRole } from '../src/platform/types';
+import type { DesktopSettings, DownloadResult, FetchBytesResult, FetchTextResult, UsageMap, WindowRole } from '../src/platform/types';
 
 /** 主进程列出的文件夹内容（只有元信息，字节另行按需读取） */
 export interface PickedFolderEntry {
@@ -28,7 +28,10 @@ export interface EmojiBridge {
   exists(rel: string): Promise<boolean>;
   fetchText(url: string, timeoutMs: number): Promise<FetchTextResult>;
   download(url: string, rel: string, timeoutMs: number): Promise<DownloadResult>;
+  fetchBytes(url: string, timeoutMs: number): Promise<FetchBytesResult>;
   copyImagePng(png: Uint8Array): Promise<void>;
+  /** 让主进程对本窗口执行“粘贴”命令：页面会收到带剪贴板内容（图片、文件、网页片段）的 paste 事件 */
+  paste(): Promise<void>;
   copyFile(rel: string): Promise<void>;
   copyFiles(rels: string[]): Promise<void>;
   saveFile(suggestedName: string, bytes: Uint8Array): Promise<{ saved: boolean; path?: string }>;

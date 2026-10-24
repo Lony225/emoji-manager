@@ -29,7 +29,12 @@ export function createElectronPlatform(bridge: EmojiBridge): Platform {
     fileUrl: async (rel) => stickerUrl(rel),
     fetchText: (url, timeoutMs = 30000) => bridge.fetchText(url, timeoutMs),
     download: (url, rel, timeoutMs = 60000) => bridge.download(url, rel, timeoutMs),
+    fetchBytes: (url, timeoutMs = 20000) => bridge.fetchBytes(url, timeoutMs),
     copyImagePng: (png) => bridge.copyImagePng(png),
+    async triggerPaste() {
+      await bridge.paste();
+      return true;
+    },
     copyFile: (rel) => bridge.copyFile(rel),
     copyFiles: (rels) => bridge.copyFiles(rels),
     saveFile: (name, bytes) => bridge.saveFile(name, bytes),

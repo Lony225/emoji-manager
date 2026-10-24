@@ -5,10 +5,11 @@ import { copySticker, copyStickers } from '../core/clipboard';
 import { platform } from '../platform';
 import { errorMessage } from '../core/subscription/sync';
 import { SUBSCRIPTIONS_ENABLED } from '../core/features';
-import { extFromName } from '../core/images';
+import { extFromBytes, extFromContentType, extFromName, fileStem, mimeFromExt } from '../core/images';
 import { defaultPackageName } from '../core/package';
 import { categoryIdsIncludingChildren, categoryLabel } from '../core/selectors';
 import type { Sticker } from '../core/types';
+import type { MakerSource } from './maker';
 
 const lib = () => useLibraryStore.getState();
 const ui = () => useUiStore.getState();
@@ -144,9 +145,9 @@ async function toImportFiles(files: Iterable<File>): Promise<ImportFile[]> {
   return Promise.all(Array.from(files).map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
 }
 
-function describeImport(r: ImportResult, extra: string[] = []): void {
+function describeImport(r: ImportResult, extra: string[] = [], where?: string): void {
   const parts: string[] = [];
-  if (r.added) parts.push(`已导入 ${r.added} 个表情`);
+  if (r.added) parts.push(where ? `已导入 ${r.added} 个表情到“${where}”` : `已导入 ${r.added} 个表情`);
   if (r.moved) parts.push(`${r.moved} 个已有的相同表情已移到该分类`);
   parts.push(...extra);
   if (r.skipped) parts.push(`跳过 ${r.skipped} 个重复或不支持的文件`);
@@ -154,7 +155,7 @@ function describeImport(r: ImportResult, extra: string[] = []): void {
   ui().toast(parts.join('，') || '没有新的表情', r.failed ? 'error' : r.added || r.moved ? 'success' : 'info');
 }
 
-export async function importFileList(files: Iterable<File>, categoryId: string | null): Promise<void> {
+export async function importFileList(files: Iterable<File>, categoryId: string | null, opts: { mentionCategory?: boolean } = {}): Promise<void> {
   const list = Array.from(files).filter(isImageFile);
   const { toast } = ui();
   if (list.length === 0) {
@@ -162,7 +163,8 @@ export async function importFileList(files: Iterable<File>, categoryId: string |
     return;
   }
   if (list.length > 20) toast(`正在导入 ${list.length} 张图片…`);
-  describeImport(await lib().importFiles(await toImportFiles(list), categoryId));
+  const where = opts.mentionCategory && categoryId ? lib().categories.find((c) => c.id === categoryId)?.name : undefined;
+  describeImport(await lib().importFiles(await toImportFiles(list), categoryId), [], where);
 }
 
 /** 当前正在看的分类（导入时默认放进去） */
@@ -320,7 +322,8 @@ export async function readDroppedItems(
     }
   }
   if (entries.length === 0) {
-    files.push(...Array.from(fallbackFiles ?? []));
+    // 没有目录项可用时退回 dataTransfer.files；上面已经从 getAsFile 拿到的就不要再加一遍
+    if (files.length === 0) files.push(...Array.from(fallbackFiles ?? []));
     return { files, folders };
   }
   for (const entry of entries) {
@@ -361,13 +364,13 @@ async function walkDirectory(dir: FileSystemDirectoryEntry, prefix: string, out:
 }
 
 /** 打开“导入文件夹”对话框（一个或多个文件夹一起处理） */
-export function openFoldersImport(folders: PickedFolder[], parentName?: string): void {
+export function openFoldersImport(folders: PickedFolder[], parentName?: string, parentId?: string): void {
   const nonEmpty = folders.filter((f) => f.files.some((x) => isImageName(x.name)));
   if (nonEmpty.length === 0) {
     ui().toast('所选文件夹里没有支持的图片（png / jpg / gif / webp / bmp / avif / svg）', 'error');
     return;
   }
-  ui().openDialog({ kind: 'importFolders', folders: nonEmpty, parentName });
+  ui().openDialog({ kind: 'importFolders', folders: nonEmpty, parentName, parentId });
 }
 
 export async function pickAndImportFolders(): Promise<void> {
@@ -397,6 +400,238 @@ export async function importPackageFile(file: File): Promise<void> {
   } catch (e) {
     toast(`导入失败：${errorMessage(e)}`, 'error');
   }
+}
+
+// ---------------------------------------------------------------- 粘贴 / 拖入：文件、剪贴板位图、网页图片
+
+export function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || typeof el.tagName !== 'string') return false;
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable;
+}
+
+/** 剪贴板 / 拖放里能拿到的内容 */
+export interface LooseContent {
+  files: File[];
+  html: string;
+  uris: string[];
+  text: string;
+}
+
+/** 必须在事件处理函数里同步调用（DataTransfer 过了事件就读不到了） */
+export function readTransfer(dt: DataTransfer | null | undefined): LooseContent {
+  if (!dt) return { files: [], html: '', uris: [], text: '' };
+  const safe = (type: string) => {
+    try {
+      return dt.getData(type) || '';
+    } catch {
+      return '';
+    }
+  };
+  return {
+    files: Array.from(dt.files ?? []),
+    html: safe('text/html'),
+    uris: safe('text/uri-list')
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter((s) => s && !s.startsWith('#')),
+    text: safe('text/plain'),
+  };
+}
+
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", '#x27': "'" };
+
+function decodeEntities(s: string): string {
+  return s.replace(/&(amp|lt|gt|quot|#39|#x27);/g, (_, k: string) => ENTITIES[k] ?? '');
+}
+
+/** 从网页片段里的 <img>、链接列表、纯文本里找出图片地址（http(s) 或 data:image） */
+export function imageUrlsFrom(c: LooseContent): string[] {
+  const out: string[] = [];
+  const add = (raw: string) => {
+    const u = raw.trim();
+    if (u && !out.includes(u) && out.length < 20 && (/^https?:\/\//i.test(u) || /^data:image\//i.test(u))) out.push(u);
+  };
+  for (const m of c.html.matchAll(/<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) add(decodeEntities(m[1] ?? m[2] ?? m[3] ?? ''));
+  for (const u of c.uris) add(u);
+  const t = c.text.trim();
+  if (/^(https?:\/\/\S+|data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\s]+)$/i.test(t)) add(t);
+  return out;
+}
+
+/** 浏览器把剪贴板里的位图（截图、聊天窗口里复制的图）包装成一个刚创建的、叫 image.png 的文件 */
+function isClipboardBitmap(f: File): boolean {
+  return f.name === 'image.png' && f.type === 'image/png' && Date.now() - f.lastModified < 60_000;
+}
+
+/** 地址的扩展名一看就是静态格式，没必要为了保留动画再去抓原图 */
+function surelyStatic(url: string): boolean {
+  const ext = extFromName(url);
+  return ext === 'jpg' || ext === 'bmp';
+}
+
+function toFile(bytes: Uint8Array, name: string, ext: string): File {
+  return new File([bytes as unknown as BlobPart], `${name}.${ext}`, { type: mimeFromExt(ext) });
+}
+
+/** 把一个图片地址变成文件：data: 直接解码，http(s) 交给平台层下载（桌面端不受跨域限制） */
+async function fileFromUrl(url: string): Promise<File | null> {
+  if (/^data:/i.test(url)) {
+    const m = /^data:(image\/[a-z0-9.+-]+)?(;base64)?,([\s\S]*)$/i.exec(url);
+    if (!m) return null;
+    const payload = m[2]
+      ? Uint8Array.from(atob(m[3].replace(/\s+/g, '')), (ch) => ch.charCodeAt(0))
+      : new TextEncoder().encode(decodeURIComponent(m[3]));
+    const ext = extFromBytes(payload) ?? extFromContentType(m[1]);
+    return ext ? toFile(payload, '粘贴的图片', ext) : null;
+  }
+  const { bytes, contentType } = await platform.fetchBytes(url, 15000);
+  const ext = extFromBytes(bytes) ?? extFromContentType(contentType);
+  if (!ext) return null;
+  const stem = fileStem(url);
+  return toFile(bytes, stem === '表情' ? '网页图片' : stem, ext);
+}
+
+async function filesFromUrls(urls: string[]): Promise<File[]> {
+  const out: File[] = [];
+  for (const u of urls) {
+    try {
+      const f = await fileFromUrl(u);
+      if (f) out.push(f);
+    } catch (e) {
+      console.warn('获取图片失败', u, e);
+    }
+  }
+  return out;
+}
+
+export interface LooseImportOptions {
+  /** 指定分类（拖到侧栏某个分类上时）；不传则按当前视图决定或询问 */
+  categoryId?: string;
+  /** 一起拖进来的文件夹 */
+  folders?: PickedFolder[];
+  /** 用户明确做了动作（点了“粘贴”、松开了拖放）：什么都没导入时要提示 */
+  explicit?: boolean;
+}
+
+/**
+ * 导入“松散”的内容（粘贴或拖进来的）：
+ * 1. 真正的文件（有名字的图片、zip、文件夹）直接用；
+ * 2. 否则看网页片段 / 链接里有没有图片地址——从浏览器复制或拖来的图片走这里能拿到原图（GIF 保留动画）；
+ * 3. 最后才用剪贴板位图（截图、聊天窗口里复制的图）。
+ * 返回有没有导入东西。
+ */
+export async function importLoose(content: LooseContent, opts: LooseImportOptions = {}): Promise<boolean> {
+  const { toast } = ui();
+  const folders = opts.folders ?? [];
+  const zips = content.files.filter((f) => /\.zip$/i.test(f.name));
+  const bitmaps = content.files.filter((f) => isImageFile(f) && isClipboardBitmap(f));
+  let images = content.files.filter((f) => isImageFile(f) && !isClipboardBitmap(f));
+  if (images.length === 0) {
+    const urls = imageUrlsFrom(content);
+    // 位图已经在手里时，只有地址可能是动图（或看不出格式）才值得去抓原图
+    const worth = bitmaps.length === 0 ? urls : urls.filter((u) => /^data:/i.test(u) || !surelyStatic(u));
+    if (worth.length) {
+      if (worth.some((u) => /^https?:/i.test(u))) toast('正在获取图片…');
+      images = await filesFromUrls(worth);
+    }
+  }
+  if (images.length === 0 && bitmaps.length) {
+    images = bitmaps.map((f, i) => new File([f], `粘贴的表情 ${i + 1}.png`, { type: f.type }));
+  }
+  for (const z of zips) await importPackageFile(z);
+  if (images.length) {
+    if (opts.categoryId !== undefined) await importFileList(images, opts.categoryId, { mentionCategory: true });
+    else importImages(images);
+  }
+  if (folders.length) openFoldersImport(folders, undefined, opts.categoryId);
+  const handled = zips.length > 0 || images.length > 0 || folders.length > 0;
+  if (!handled && opts.explicit) {
+    const hadSomething = content.files.length > 0 || content.uris.length > 0 || content.html !== '';
+    toast(hadSomething ? '没有可导入的图片、文件夹或 zip 表情包' : '剪贴板里没有图片', 'error');
+  }
+  return handled;
+}
+
+/** 点了“粘贴”按钮之后短时间内到来的 paste 事件算作用户明确要粘贴 */
+let explicitPasteUntil = 0;
+
+/** 处理 paste 事件（Ctrl+V，或点“粘贴”按钮后由主进程触发） */
+export function handlePasteEvent(e: ClipboardEvent): void {
+  const explicit = Date.now() < explicitPasteUntil;
+  explicitPasteUntil = 0;
+  if (isEditableTarget(e.target) || ui().dialog.kind !== 'none') return;
+  const content = readTransfer(e.clipboardData);
+  // 纯文字（不是图片地址）不拦截也不提示，除非是点了按钮
+  if (content.files.length === 0 && imageUrlsFrom(content).length === 0) {
+    if (explicit) ui().toast('剪贴板里没有图片', 'error');
+    return;
+  }
+  e.preventDefault();
+  void importLoose(content, { explicit });
+}
+
+/** 点“粘贴”按钮：桌面端让主进程执行粘贴命令（和 Ctrl+V 走同一条路），浏览器里用 navigator.clipboard 读 */
+export async function pasteFromClipboard(): Promise<void> {
+  const active = document.activeElement as HTMLElement | null;
+  if (active && active !== document.body && typeof active.blur === 'function') active.blur();
+  try {
+    explicitPasteUntil = Date.now() + 2000;
+    if (await platform.triggerPaste()) return;
+    explicitPasteUntil = 0;
+    const clip = navigator.clipboard as Clipboard | undefined;
+    if (!clip || typeof clip.read !== 'function') throw new Error('当前浏览器不支持读取剪贴板，请直接按 Ctrl+V');
+    const content: LooseContent = { files: [], html: '', uris: [], text: '' };
+    for (const item of await clip.read()) {
+      for (const type of item.types) {
+        const blob = await item.getType(type);
+        if (type.startsWith('image/')) content.files.push(new File([blob], `image.${type.split('/')[1] || 'png'}`, { type }));
+        else if (type === 'text/html') content.html = await blob.text();
+        else if (type === 'text/plain') content.text = await blob.text();
+      }
+    }
+    await importLoose(content, { explicit: true });
+  } catch (e) {
+    ui().toast(`读取剪贴板失败：${errorMessage(e)}`, 'error');
+  }
+}
+
+/** 这个拖动能不能导入：系统文件，或网页上拖来的图片 / 链接（侧栏自己的分类拖拽不算） */
+export function isDragAcceptable(e: DragEvent): boolean {
+  const types = Array.from(e.dataTransfer?.types ?? []);
+  return types.includes('Files') || types.includes('text/uri-list');
+}
+
+/** 拖放落点所在的侧栏分类（分类行上有 data-drop-category） */
+export function dropCategoryAt(target: EventTarget | null): string | undefined {
+  const el = target as Element | null;
+  const row = el && typeof el.closest === 'function' ? el.closest<HTMLElement>('[data-drop-category]') : null;
+  return row?.dataset.dropCategory || undefined;
+}
+
+/** 处理拖放：先同步把 DataTransfer 里的东西读出来，再异步导入 */
+export async function handleDropEvent(e: DragEvent): Promise<void> {
+  const content = readTransfer(e.dataTransfer);
+  const categoryId = dropCategoryAt(e.target);
+  const pending = readDroppedItems(e.dataTransfer?.items ?? null, e.dataTransfer?.files ?? null);
+  try {
+    const { files, folders } = await pending;
+    await importLoose({ ...content, files }, { folders, categoryId, explicit: true });
+  } catch (err) {
+    ui().toast(`导入失败：${errorMessage(err)}`, 'error');
+  }
+}
+
+// ---------------------------------------------------------------- 制作表情（加文字）
+
+export function openMaker(source: MakerSource): void {
+  ui().openDialog({ kind: 'maker', source });
+}
+
+/** 选一张本地图片加文字 */
+export async function pickAndMake(): Promise<void> {
+  const [file] = await pickFiles({ multiple: false });
+  if (file) openMaker({ type: 'file', file });
 }
 
 // ---------------------------------------------------------------- 导出
@@ -431,6 +666,7 @@ export function stickerMenuItems(ids: string[]): MenuItem[] {
     if (caps.share) items.push({ label: '分享…', icon: 'share', onSelect: () => void shareSticker(single) });
     items.push({ label: '重命名', icon: 'edit', onSelect: () => startRename(ids) });
     items.push({ label: '编辑…', icon: 'edit', onSelect: () => ui().openDialog({ kind: 'sticker', id: single.id }) });
+    items.push({ label: '加文字，做成新表情…', icon: 'text', onSelect: () => openMaker({ type: 'sticker', id: single.id }) });
   } else {
     if (caps.copyFile) items.push({ label: `复制 ${stickers.length} 个文件`, icon: 'copy', onSelect: () => void copyManyWithFeedback(ids) });
     items.push({ label: '批量命名…', icon: 'edit', onSelect: () => startRename(ids) });

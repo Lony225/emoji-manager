@@ -5,12 +5,12 @@ import { filterStickers } from './core/selectors';
 import {
   confirmDeleteStickers,
   copyManyWithFeedback,
+  dropCategoryAt,
   getVisibleOrder,
-  importImages,
-  importPackageFile,
-  isImageFile,
-  openFoldersImport,
-  readDroppedItems,
+  handleDropEvent,
+  handlePasteEvent,
+  isDragAcceptable,
+  isEditableTarget,
   startRename,
 } from './ui/actions';
 import { TopBar } from './components/TopBar';
@@ -32,18 +32,13 @@ import { ExportDialog } from './components/dialogs/ExportDialog';
 import { CategoryParentDialog } from './components/dialogs/CategoryParentDialog';
 import { UpdateDialog } from './components/dialogs/UpdateDialog';
 import { BulkRenameDialog } from './components/dialogs/BulkRenameDialog';
+import { MakerDialog } from './components/dialogs/MakerDialog';
 import { formatHotkey } from './components/HotkeyInput';
 import { runUpdateCheck } from './ui/update';
 import { installDeepLinkHandler } from './ui/deeplink';
 import { SUBSCRIPTIONS_ENABLED } from './core/features';
 import { installThumbWorker } from './ui/thumbs';
 import { useTheme } from './ui/hooks';
-
-function isEditable(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (!el) return false;
-  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable;
-}
 
 function useShortcuts() {
   useEffect(() => {
@@ -56,7 +51,7 @@ function useShortcuts() {
         else if (ui.filter.query) ui.setQuery('');
         return;
       }
-      if (isEditable(e.target) || ui.dialog.kind !== 'none') return;
+      if (isEditableTarget(e.target) || ui.dialog.kind !== 'none') return;
       const mod = e.ctrlKey || e.metaKey;
       if ((e.key === 'Delete' || e.key === 'Backspace') && ui.selection.size > 0) {
         e.preventDefault();
@@ -77,51 +72,43 @@ function useShortcuts() {
   }, []);
 }
 
-/** 拖图片进窗口即导入；返回是否正在拖入（用于显示覆盖层） */
-function useDragImport(): boolean {
+/**
+ * 拖东西进窗口即导入：系统里的图片 / 文件夹 / zip，以及从浏览器拖来的网页图片。
+ * 拖到侧栏某个分类上会直接放进那个分类。返回是否正在拖入和悬停的分类名（用于覆盖层提示）。
+ */
+function useDragImport(): { dragging: boolean; targetName: string | null } {
   const [dragging, setDragging] = useState(false);
+  const [targetName, setTargetName] = useState<string | null>(null);
   useEffect(() => {
     let depth = 0;
-    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const reset = () => {
+      depth = 0;
+      setDragging(false);
+      setTargetName(null);
+    };
     const onEnter = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
+      if (!isDragAcceptable(e)) return;
       e.preventDefault();
       depth++;
       setDragging(true);
     };
     const onOver = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
+      if (!isDragAcceptable(e)) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      const id = dropCategoryAt(e.target);
+      setTargetName(id ? (useLibraryStore.getState().categories.find((c) => c.id === id)?.name ?? null) : null);
     };
     const onLeave = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
+      if (!isDragAcceptable(e)) return;
       depth = Math.max(0, depth - 1);
-      if (depth === 0) setDragging(false);
+      if (depth === 0) reset();
     };
     const onDrop = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
+      if (!isDragAcceptable(e)) return;
       e.preventDefault();
-      depth = 0;
-      setDragging(false);
-      const items = e.dataTransfer?.items ?? null;
-      const fallback = e.dataTransfer?.files ?? null;
-      void (async () => {
-        try {
-          const { files, folders } = await readDroppedItems(items, fallback);
-          // zip 表情包直接导入，图片放进当前分类，文件夹逐个询问是否成为分类
-          const zips = files.filter((f) => /\.zip$/i.test(f.name));
-          const images = files.filter(isImageFile);
-          for (const z of zips) await importPackageFile(z);
-          if (images.length) importImages(images);
-          if (folders.length) openFoldersImport(folders);
-          if (!zips.length && !images.length && !folders.length) {
-            useUiStore.getState().toast('没有可导入的图片、文件夹或 zip 表情包', 'error');
-          }
-        } catch (err) {
-          useUiStore.getState().toast(`导入失败：${err instanceof Error ? err.message : String(err)}`, 'error');
-        }
-      })();
+      reset();
+      void handleDropEvent(e);
     };
     window.addEventListener('dragenter', onEnter);
     window.addEventListener('dragover', onOver);
@@ -134,26 +121,14 @@ function useDragImport(): boolean {
       window.removeEventListener('drop', onDrop);
     };
   }, []);
-  return dragging;
+  return { dragging, targetName };
 }
 
-/** Ctrl+V 粘贴剪贴板里的图片即导入（从聊天窗口里保存表情最快的方式） */
+/** Ctrl+V（或点“粘贴”按钮）：把剪贴板里的图片 / 文件 / 网页图片存为表情 */
 function usePasteImport() {
   useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      if (isEditable(e.target) || useUiStore.getState().dialog.kind !== 'none') return;
-      const files = Array.from(e.clipboardData?.files ?? []).filter(isImageFile);
-      if (files.length === 0) return;
-      e.preventDefault();
-      const named = files.map((f, i) => {
-        if (f.name && f.name !== 'image.png') return f;
-        const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
-        return new File([f], `粘贴的表情 ${i + 1}.${ext}`, { type: f.type });
-      });
-      importImages(named);
-    };
-    document.addEventListener('paste', onPaste);
-    return () => document.removeEventListener('paste', onPaste);
+    document.addEventListener('paste', handlePasteEvent);
+    return () => document.removeEventListener('paste', handlePasteEvent);
   }, []);
 }
 
@@ -194,13 +169,22 @@ function Dialogs() {
     case 'pickCategory':
       return <CategoryPickDialog key={dialog.title} title={dialog.title} current={dialog.current} hint={dialog.hint} onPick={dialog.onPick} />;
     case 'importFolders':
-      return <ImportFolderDialog key={dialog.folders.map((f) => f.name).join('|')} folders={dialog.folders} parentName={dialog.parentName} />;
+      return (
+        <ImportFolderDialog
+          key={dialog.folders.map((f) => f.name).join('|')}
+          folders={dialog.folders}
+          parentName={dialog.parentName}
+          parentId={dialog.parentId}
+        />
+      );
     case 'exportPackage':
       return <ExportDialog key={dialog.ids.join()} ids={dialog.ids} defaultName={dialog.defaultName} />;
     case 'categoryParent':
       return <CategoryParentDialog key={dialog.id} id={dialog.id} />;
     case 'update':
       return <UpdateDialog key={dialog.release.tag} release={dialog.release} current={dialog.current} />;
+    case 'maker':
+      return <MakerDialog key={dialog.source.type === 'sticker' ? dialog.source.id : dialog.source.file.name} source={dialog.source} />;
     default:
       return null;
   }
@@ -240,7 +224,7 @@ export function App() {
   useTheme();
   useShortcuts();
   usePasteImport();
-  const dragging = useDragImport();
+  const { dragging, targetName } = useDragImport();
 
   const filtered = useMemo(() => filterStickers(stickers, filter, usage, categories), [stickers, filter, usage, categories]);
   if (!loaded) return <div className="load-screen">正在加载…</div>;
@@ -258,7 +242,18 @@ export function App() {
       <ContextMenu />
       <Dialogs />
       <Toasts />
-      {dragging && <div className="drop-overlay">松开即可导入：图片、文件夹（成为分类）或 zip 表情包</div>}
+      {dragging && (
+        <div className="drop-overlay">
+          {targetName ? (
+            <span>松开即导入到“{targetName}”</span>
+          ) : (
+            <span>
+              松开即可导入：图片、文件夹（成为分类）、zip 表情包，网页上拖来的图片也可以
+              <small>拖到左侧某个分类上，会直接放进那个分类</small>
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
