@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { EmojiBridge } from './bridge-types';
-import type { UsageMap } from '../src/platform/types';
+import type { MemeProgress, UsageMap } from '../src/platform/types';
 
 function cleanError(e: unknown): Error {
   const msg = e instanceof Error ? e.message : String(e);
@@ -83,6 +83,17 @@ const bridge: EmojiBridge = {
     ipcRenderer.on('deeplink', () => cb());
   },
   takePendingDeepLink: () => invoke('deeplink:take'),
+
+  memeStatus: () => invoke('memes:status'),
+  memeList: () => invoke('memes:list'),
+  memePreview: (key, options) => invoke('memes:preview', key, options),
+  memeGenerate: (key, images, texts, options) => invoke('memes:generate', key, images, texts, options),
+  memeDownloadFonts: () => invoke('memes:downloadFonts'),
+  onMemeProgress(cb) {
+    const listener = (_e: Electron.IpcRendererEvent, p: MemeProgress) => cb(p);
+    ipcRenderer.on('memes:progress', listener);
+    return () => ipcRenderer.removeListener('memes:progress', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('emojiBridge', bridge);

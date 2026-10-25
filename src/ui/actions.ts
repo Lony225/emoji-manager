@@ -634,6 +634,15 @@ export async function pickAndMake(): Promise<void> {
   if (file) openMaker({ type: 'file', file });
 }
 
+/** 用 meme-generator 的模板做表情（桌面端）；给 stickerId 则把这张图填进第一个图片槽 */
+export function openMemeTemplates(stickerId?: string): void {
+  if (!platform.capabilities.memeTemplates) {
+    ui().toast('当前环境不支持模板表情', 'error');
+    return;
+  }
+  ui().openDialog({ kind: 'memeTemplates', stickerId });
+}
+
 // ---------------------------------------------------------------- 导出
 
 export function openExportDialog(ids: string[]): void {
@@ -667,6 +676,7 @@ export function stickerMenuItems(ids: string[]): MenuItem[] {
     items.push({ label: '重命名', icon: 'edit', onSelect: () => startRename(ids) });
     items.push({ label: '编辑…', icon: 'edit', onSelect: () => ui().openDialog({ kind: 'sticker', id: single.id }) });
     items.push({ label: '加文字，做成新表情…', icon: 'text', onSelect: () => openMaker({ type: 'sticker', id: single.id }) });
+    if (caps.memeTemplates) items.push({ label: '用这张图套模板…', icon: 'sparkles', onSelect: () => openMemeTemplates(single.id) });
   } else {
     if (caps.copyFile) items.push({ label: `复制 ${stickers.length} 个文件`, icon: 'copy', onSelect: () => void copyManyWithFeedback(ids) });
     items.push({ label: '批量命名…', icon: 'edit', onSelect: () => startRename(ids) });

@@ -43,7 +43,9 @@ export type DialogState =
   | { kind: 'categoryParent'; id: string }
   | { kind: 'update'; release: LatestRelease; current: string }
   /** 制作表情：在一张图上加文字 */
-  | { kind: 'maker'; source: MakerSource };
+  | { kind: 'maker'; source: MakerSource }
+  /** 用 meme-generator 的模板做表情；stickerId 预填第一张图 */
+  | { kind: 'memeTemplates'; stickerId?: string };
 
 export interface MenuItem {
   label: string;

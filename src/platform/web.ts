@@ -96,6 +96,7 @@ export function createWebPlatform(): Platform {
       corsRestricted: true,
       desktop: false,
       multiFolderPick: false,
+      memeTemplates: false,
     },
     async init() {
       db = await openDb();
@@ -291,6 +292,24 @@ export function createWebPlatform(): Platform {
     },
     async setLaunchAtLogin() {},
     async setWindowBackground() {},
+    async memeStatus() {
+      return { available: false, version: '', templates: 0, fontsTotal: 0, fontsReady: 0, downloading: false, error: '浏览器版不支持模板表情' };
+    },
+    async memeList() {
+      throw new Error('浏览器版不支持模板表情');
+    },
+    async memePreview() {
+      throw new Error('浏览器版不支持模板表情');
+    },
+    async memeGenerate() {
+      throw new Error('浏览器版不支持模板表情');
+    },
+    async memeDownloadFonts() {
+      throw new Error('浏览器版不支持模板表情');
+    },
+    onMemeProgress() {
+      return () => undefined;
+    },
     onDeepLink() {},
     async takePendingDeepLink() {
       // 浏览器版：支持 ?subscribe=<清单地址> 这种打开方式

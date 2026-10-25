@@ -117,10 +117,10 @@ async function findPage(role = 'main') {
 
 // ---------------------------------------------------------------- 启动 / 关闭
 
-function launch(dataDir) {
+function launch(dataDir, extraEnv = {}) {
   // E2E_ELECTRON_BIN 可以指向打包后的可执行文件，用同一套测试验证安装包
   const electronPath = process.env.E2E_ELECTRON_BIN || require('electron');
-  const env = { ...process.env, EMOJI_USER_DATA_DIR: dataDir };
+  const env = { ...process.env, EMOJI_USER_DATA_DIR: dataDir, ...extraEnv };
   delete env.VITE_DEV_SERVER_URL;
   delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(electronPath, ['.', `--remote-debugging-port=${PORT}`], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -160,7 +160,9 @@ async function main() {
   console.log(`数据目录：${dataDir}`);
   console.log(`示例订阅源：${sampleUrl}`);
 
-  let proc = launch(dataDir);
+  // 模板表情的素材从示例服务器拿（假清单），不联网
+  const memeEnv = { EMOJI_MEME_RESOURCES_ROOT: `${sampleUrl}/meme-resources/` };
+  let proc = launch(dataDir, memeEnv);
   try {
     // ---- 第一次启动
     let page = await findPage();
@@ -755,6 +757,68 @@ async function main() {
     const gifInfo = await cdp.eval(`(async () => { if (!'${madeGif}') return { head: '' }; const r = await fetch('sticker://library/${madeGif}'); const buf = await r.arrayBuffer(); const head = String.fromCharCode(...new Uint8Array(buf.slice(0, 6))); const d = new ImageDecoder({ data: buf, type: 'image/gif' }); await d.tracks.ready; await d.completed; const n = d.tracks.selectedTrack.frameCount; const { image } = await d.decode({ frameIndex: 0 }); const w = image.displayWidth, h = image.displayHeight; image.close(); d.close(); return { head, frames: n, w, h, bytes: buf.byteLength }; })()`);
     check('生成的 GIF 仍是多帧动画、尺寸不变', gifInfo.head === 'GIF89a' && gifInfo.frames > 1 && gifInfo.frames <= srcFrames && gifInfo.w === 160 && gifInfo.h === 160, JSON.stringify({ ...gifInfo, srcFrames }));
 
+    // ---- 模板表情（meme-generator）：素材清单、字体、模板图片都来自本地示例服务器，不联网
+    console.log('\n模板表情');
+    await cdp.eval("window.__uiStore.getState().setView({ kind: 'all' })");
+    await cdp.eval('window.__emojiActions.openMemeTemplates()');
+    await cdp.waitFor("document.querySelector('.dialog.memes') ? 1 : 0", 5000, '模板对话框');
+    const memeCount = await cdp.waitFor("document.querySelectorAll('.meme-card').length >= 250 ? document.querySelectorAll('.meme-card').length : 0", 40000, '模板列表').catch(() => 0);
+    check('模板列表加载（引擎在工具进程里启动）', memeCount >= 250, String(memeCount));
+    // 首次使用：提示下载字体（清单来自示例服务器，只有一个假字体）
+    await cdp.waitFor("document.querySelector('.memes-banner .memes-download') ? 1 : 0", 15000, '下载字体提示');
+    check('首次使用提示下载字体', true);
+    await cdp.eval("document.querySelector('.memes-banner .memes-download').click()");
+    await cdp.waitFor("!document.querySelector('.memes-banner') ? 1 : 0", 20000, '字体下载完成');
+    const memeHome = path.join(dataDir, 'meme-generator');
+    check('字体按清单下载并校验到数据目录', existsSync(path.join(memeHome, 'resources', 'fonts', 'sample.ttf')));
+    // 搜索并选一个只要文字的模板：喜报
+    const setSearch = (q) => cdp.eval(`(() => { const i = document.querySelector('.memes-toolbar input'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(i, ${JSON.stringify(q)}); i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await setSearch('喜报');
+    await cdp.waitFor("document.querySelector('.meme-card[data-key=good_news]') ? 1 : 0", 5000, '搜索到喜报');
+    check('按关键词搜索模板', (await cdp.eval("document.querySelectorAll('.meme-card').length")) < 20);
+    await cdp.eval("document.querySelector('.meme-card[data-key=good_news]').click()");
+    await cdp.waitFor("document.querySelector('.meme-editor[data-key=good_news] .meme-text') ? 1 : 0", 5000, '喜报编辑面板');
+    // 预览：模板图片按需从示例服务器下载后生成，并缓存到磁盘
+    const previewOk = await cdp.waitFor("document.querySelector('.meme-card[data-key=good_news] img') ? 1 : 0", 30000, '喜报预览图').catch(() => 0);
+    const previewCached = existsSync(path.join(memeHome, 'resources', 'images', 'good_news', '0.jpg')) && existsSync(path.join(memeHome, 'previews'));
+    check('模板预览按需下载素材后生成，并缓存到磁盘', previewOk === 1 && previewCached, JSON.stringify({ previewOk, previewCached }));
+    await cdp.eval(`(() => { const i = document.querySelector('.meme-editor .meme-text'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(i, '端到端测试'); i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await cdp.eval("document.querySelector('.meme-generate').click()");
+    const newsResult = await cdp.waitFor("document.querySelector('.meme-result img') ? 1 : (document.querySelector('.meme-editor .error-text')?.textContent || 0)", 30000, '喜报生成结果').catch((e) => e.message);
+    check('文字模板生成成功', newsResult === 1, String(newsResult));
+    await cdp.eval("document.querySelector('.meme-save')?.click()");
+    const madeNews = await cdp.waitFor("(() => { const x = window.__emojiStore.getState().stickers.find((t) => t.name === '喜报 端到端测试'); return x ? x.ext : ''; })()", 10000, '喜报存为表情').catch(() => '');
+    assertEq('生成结果保存为表情（PNG）', madeNews, 'png');
+    // 图片模板：摸头（5 帧手 → GIF），图片从表情库里选
+    await setSearch('摸');
+    await cdp.waitFor("document.querySelector('.meme-card[data-key=petpet]') ? 1 : 0", 5000, '搜索到摸头');
+    await cdp.eval("document.querySelector('.meme-card[data-key=petpet]').click()");
+    await cdp.waitFor("document.querySelector('.meme-editor[data-key=petpet] .meme-add-image') ? 1 : 0", 5000, '摸头编辑面板');
+    await cdp.eval("document.querySelector('.meme-add-image').click()");
+    await cdp.waitFor("document.querySelectorAll('.meme-picker-grid button[data-id]').length > 5 ? 1 : 0", 5000, '表情库选图面板');
+    await cdp.eval("document.querySelector('.meme-picker-grid button[data-id]').click()");
+    await cdp.waitFor("document.querySelector('.meme-slot img') ? 1 : 0", 5000, '图片槽填上');
+    check('从表情库选图填进模板', true);
+    await cdp.eval("document.querySelector('.meme-generate').click()");
+    const petResult = await cdp.waitFor("document.querySelector('.meme-result img') ? 1 : (document.querySelector('.meme-editor .error-text')?.textContent || 0)", 60000, '摸头生成结果').catch((e) => e.message);
+    check('图片模板生成成功', petResult === 1, String(petResult));
+    await cdp.eval("document.querySelector('.meme-save')?.click()");
+    const madePet = await cdp.waitFor("(() => { const x = window.__emojiStore.getState().stickers.find((t) => t.name.startsWith('摸 ')); return x ? x.file : ''; })()", 10000, '摸头存为表情').catch(() => '');
+    check('图片模板生成 GIF 并保存', /\.gif$/.test(madePet), madePet);
+    const petFrames = await cdp.eval(`(async () => { if (!${JSON.stringify(madePet)}) return 0; const r = await fetch('sticker://library/${madePet}'); const d = new ImageDecoder({ data: await r.arrayBuffer(), type: 'image/gif' }); await d.tracks.ready; await d.completed; const n = d.tracks.selectedTrack.frameCount; d.close(); return n; })()`);
+    assertEq('摸头 GIF 有 5 帧', petFrames, 5);
+    const memeShot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    writeFileSync(path.join(ROOT, '.e2e-tmp', 'screenshot-memes.png'), Buffer.from(memeShot.data, 'base64'));
+    // 右键菜单入口：预填这张图
+    await cdp.eval('window.__uiStore.getState().closeDialog()');
+    const firstLocal = await cdp.eval("window.__emojiStore.getState().stickers.find((t) => t.source.type === 'local').id");
+    await cdp.eval(`window.__emojiActions.openMemeTemplates('${firstLocal}')`);
+    await cdp.waitFor("document.querySelectorAll('.meme-card').length >= 250 ? 1 : 0", 15000, '再次打开模板对话框');
+    await cdp.eval("document.querySelector('.meme-card[data-key=petpet]').click()");
+    const prefilled = await cdp.waitFor("document.querySelector('.meme-editor[data-key=petpet] .meme-slot img') ? 1 : 0", 5000, '预填图片').catch(() => 0);
+    check('右键“用这张图套模板”预填第一张图', prefilled === 1);
+    await cdp.eval('window.__uiStore.getState().closeDialog()');
+
     const totalAfterImports = await cdp.eval('window.__emojiStore.getState().stickers.length');
     const catsAfterImports = await cdp.eval('window.__emojiStore.getState().categories.length');
     const nestedBefore = await cdp.eval("window.__emojiStore.getState().categories.filter(c => c.parentId).length");
@@ -874,7 +938,7 @@ async function main() {
 
     // ---- 第二次启动：数据持久化
     console.log('\n第二次启动');
-    proc = launch(dataDir);
+    proc = launch(dataDir, memeEnv);
     page = await findPage();
     cdp = await Cdp.connect(page.webSocketDebuggerUrl);
     await cdp.waitFor('window.__emojiStore && window.__emojiStore.getState().loaded', 20000, '资料加载完成');
@@ -887,7 +951,8 @@ async function main() {
       10000,
       '图片加载',
     );
-    check('重启后图片正常显示', natural2 === 160, String(natural2));
+    // 最新的表情排在最前面（可能是刚用模板生成的 112px 摸头图），只要真的渲染出来了就行
+    check('重启后图片正常显示', natural2 > 0, String(natural2));
     // 启动时自动同步：等它跑完，应无变化、无错误
     await sleep(3000);
     const after = await cdp.eval(

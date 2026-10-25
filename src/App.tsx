@@ -33,6 +33,7 @@ import { CategoryParentDialog } from './components/dialogs/CategoryParentDialog'
 import { UpdateDialog } from './components/dialogs/UpdateDialog';
 import { BulkRenameDialog } from './components/dialogs/BulkRenameDialog';
 import { MakerDialog } from './components/dialogs/MakerDialog';
+import { MemeTemplatesDialog } from './components/dialogs/MemeTemplatesDialog';
 import { formatHotkey } from './components/HotkeyInput';
 import { runUpdateCheck } from './ui/update';
 import { installDeepLinkHandler } from './ui/deeplink';
@@ -185,6 +186,8 @@ function Dialogs() {
       return <UpdateDialog key={dialog.release.tag} release={dialog.release} current={dialog.current} />;
     case 'maker':
       return <MakerDialog key={dialog.source.type === 'sticker' ? dialog.source.id : dialog.source.file.name} source={dialog.source} />;
+    case 'memeTemplates':
+      return <MemeTemplatesDialog key={dialog.stickerId ?? ''} stickerId={dialog.stickerId} />;
     default:
       return null;
   }

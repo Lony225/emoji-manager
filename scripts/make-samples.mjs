@@ -1,6 +1,7 @@
 // 生成示例表情（PNG / GIF）、示例订阅清单和应用图标。
 // 不依赖任何第三方库：自己写 PNG 编码（zlib）和 GIF 编码（LZW）。
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
@@ -383,6 +384,42 @@ writeFileSync(
     2,
   ),
 );
+
+// 模板表情（meme-generator）的测试素材：一份假的 resources.json 清单加几张图，端到端测试不用联网就能走完下载 → 生成
+{
+  const MEME = path.join(OUT, 'meme-resources');
+  mkdirSync(path.join(MEME, 'fonts'), { recursive: true });
+  mkdirSync(path.join(MEME, 'images', 'good_news'), { recursive: true });
+  mkdirSync(path.join(MEME, 'images', 'petpet'), { recursive: true });
+  const files = [];
+  const put = (rel, bytes) => {
+    writeFileSync(path.join(MEME, rel), bytes);
+    files.push({ rel, hash: createHash('sha256').update(bytes).digest('hex') });
+  };
+  // 不是真字体，只用来验证下载和校验流程（引擎读不出来会跳过）
+  put('fonts/sample.ttf', Buffer.from('not a real font, just something to download and verify'));
+  // “喜报”的底图：600×400 的红底
+  const news = new Canvas(600, 400);
+  news.fill(() => -1, [220, 40, 40]);
+  put('images/good_news/0.jpg', encodePng(news));
+  // “摸头”的 5 帧手
+  for (let i = 0; i < 5; i++) {
+    const hand = new Canvas(112, 112);
+    hand.fill(circle(56 + i * 3, 30 - i * 2, 22), [255, 220, 180]);
+    put(`images/petpet/${i}.png`, encodePng(hand));
+  }
+  writeFileSync(
+    path.join(MEME, 'resources.json'),
+    JSON.stringify(
+      {
+        fonts: files.filter((f) => f.rel.startsWith('fonts/')).map((f) => ({ file: f.rel.slice('fonts/'.length), hash: f.hash })),
+        images: files.filter((f) => f.rel.startsWith('images/')).map((f) => ({ file: f.rel.slice('images/'.length), hash: f.hash })),
+      },
+      null,
+      2,
+    ),
+  );
+}
 
 // 应用图标：黄色圆角方块 + 笑脸
 {

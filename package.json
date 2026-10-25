@@ -24,6 +24,7 @@
     "release:notes": "node scripts/release-notes.mjs"
   },
   "dependencies": {
+    "@memecrafters/meme-generator": "^0.2.3",
     "fflate": "^0.8.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -46,7 +47,18 @@
       "electron",
       "esbuild",
       "electron-winstaller"
-    ]
+    ],
+    "supportedArchitectures": {
+      "os": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "cpu": [
+        "x64",
+        "arm64"
+      ]
+    }
   },
   "repository": {
     "type": "git",

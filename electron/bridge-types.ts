@@ -1,4 +1,17 @@
-import type { DesktopSettings, DownloadResult, FetchBytesResult, FetchTextResult, UsageMap, WindowRole } from '../src/platform/types';
+import type {
+  DesktopSettings,
+  DownloadResult,
+  FetchBytesResult,
+  FetchTextResult,
+  MemeImageInput,
+  MemeOptionValues,
+  MemeProgress,
+  MemeResult,
+  MemeStatus,
+  MemeTemplate,
+  UsageMap,
+  WindowRole,
+} from '../src/platform/types';
 
 /** 主进程列出的文件夹内容（只有元信息，字节另行按需读取） */
 export interface PickedFolderEntry {
@@ -67,6 +80,14 @@ export interface EmojiBridge {
   onDeepLink(cb: () => void): void;
   /** 取走待处理的协议链接（没有则 null） */
   takePendingDeepLink(): Promise<string | null>;
+
+  // —— 模板表情（meme-generator，在主进程的工具进程里运行）——
+  memeStatus(): Promise<MemeStatus>;
+  memeList(): Promise<MemeTemplate[]>;
+  memePreview(key: string, options: MemeOptionValues): Promise<MemeResult>;
+  memeGenerate(key: string, images: MemeImageInput[], texts: string[], options: MemeOptionValues): Promise<MemeResult>;
+  memeDownloadFonts(): Promise<void>;
+  onMemeProgress(cb: (p: MemeProgress) => void): () => void;
 }
 
 declare global {

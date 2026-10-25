@@ -16,6 +16,7 @@ export function createElectronPlatform(bridge: EmojiBridge): Platform {
       corsRestricted: false,
       desktop: true,
       multiFolderPick: true,
+      memeTemplates: true,
     },
     async init() {},
     readText: (rel) => bridge.readText(rel),
@@ -75,6 +76,13 @@ export function createElectronPlatform(bridge: EmojiBridge): Platform {
     getLaunchAtLogin: () => bridge.getLaunchAtLogin(),
     setLaunchAtLogin: (on) => bridge.setLaunchAtLogin(on),
     setWindowBackground: (color) => bridge.setWindowBackground(color),
+
+    memeStatus: () => bridge.memeStatus(),
+    memeList: () => bridge.memeList(),
+    memePreview: (key, options) => bridge.memePreview(key, options ?? {}),
+    memeGenerate: (key, images, texts, options) => bridge.memeGenerate(key, images, texts, options),
+    memeDownloadFonts: () => bridge.memeDownloadFonts(),
+    onMemeProgress: (cb) => bridge.onMemeProgress(cb),
   };
 }
 

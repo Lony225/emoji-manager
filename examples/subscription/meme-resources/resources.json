@@ -1,0 +1,34 @@
+{
+  "fonts": [
+    {
+      "file": "sample.ttf",
+      "hash": "c0ade2887456ce8295e07f7aad982dd1d5908425b452e041ff55672bc7f80b70"
+    }
+  ],
+  "images": [
+    {
+      "file": "good_news/0.jpg",
+      "hash": "e50079ffd5ed21c5b8ae0eea57bdd1c6224b867535e998a6caf6fdf9d4ff62d3"
+    },
+    {
+      "file": "petpet/0.png",
+      "hash": "cea783ba9ac190f7f1fce93ee76963cc1eddddc8211433d30e299433626ea023"
+    },
+    {
+      "file": "petpet/1.png",
+      "hash": "a2eacac2dfe8489bacd89b44d761a9b4ef8891042ff5c038a7f61c9a8b01bc39"
+    },
+    {
+      "file": "petpet/2.png",
+      "hash": "83e9fb3ece5bc079cb166dba961b09abd88252d87ad6266e7a3106b549b24ee7"
+    },
+    {
+      "file": "petpet/3.png",
+      "hash": "fc32b9cdcf5e371bf71e5ff0d4859bc90395ea70acd40c12f8b51cab2f766060"
+    },
+    {
+      "file": "petpet/4.png",
+      "hash": "4361528b44db81b67a69f739d4d43231a7f5b23d41945fec29eafd8cfb449e10"
+    }
+  ]
+}

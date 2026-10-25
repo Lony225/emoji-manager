@@ -23,6 +23,7 @@ import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { registerMemeIpc, stopWorker as stopMemeWorker } from './memes';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const MAX_DOWNLOAD = 100 * 1024 * 1024;
@@ -988,6 +989,8 @@ function registerIpc(): void {
   });
   ipcMain.handle('app:chooseLibraryDir', async (e) => chooseLibraryDir(BrowserWindow.fromWebContents(e.sender)));
 
+  registerMemeIpc((channel, payload) => broadcast(channel, payload));
+
   ipcMain.handle('usage:get', async () => usage);
   ipcMain.handle('usage:record', async (_e, id: string) => recordUsage(id));
 
@@ -1055,6 +1058,7 @@ if (!gotLock) {
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    stopMemeWorker();
   });
 
   app.on('window-all-closed', () => {

@@ -39,6 +39,66 @@ export interface FetchBytesResult {
   contentType: string | null;
 }
 
+// ---------------------------------------------------------------- 模板表情（meme-generator）
+
+export interface MemeOptionSchema {
+  name: string;
+  type: 'boolean' | 'string' | 'integer' | 'float';
+  default: boolean | string | number | null;
+  description: string | null;
+  /** 字符串选项的可选值 */
+  choices?: string[];
+  minimum: number | null;
+  maximum: number | null;
+}
+
+/** 用户给选项填的值（按选项名） */
+export type MemeOptionValues = Record<string, boolean | string | number>;
+
+export interface MemeTemplate {
+  key: string;
+  keywords: string[];
+  tags: string[];
+  minImages: number;
+  maxImages: number;
+  minTexts: number;
+  maxTexts: number;
+  defaultTexts: string[];
+  options: MemeOptionSchema[];
+  shortcuts: { pattern: string; humanized: string | null }[];
+  dateCreated: string;
+  dateModified: string;
+}
+
+export interface MemeStatus {
+  /** 当前平台有没有可用的模板引擎 */
+  available: boolean;
+  version: string;
+  templates: number;
+  fontsTotal: number;
+  fontsReady: number;
+  downloading: boolean;
+  error?: string;
+}
+
+export interface MemeProgress {
+  kind: 'fonts' | 'images';
+  key?: string;
+  done: number;
+  total: number;
+  file?: string;
+}
+
+export interface MemeImageInput {
+  name: string;
+  data: Uint8Array;
+}
+
+export interface MemeResult {
+  bytes: Uint8Array;
+  ext: string;
+}
+
 export type PlatformKind = 'electron' | 'web' | 'capacitor';
 export type OsKind = 'windows' | 'mac' | 'linux' | 'android' | 'ios' | 'unknown';
 /** 当前渲染进程是主窗口还是桌面浮窗 */
@@ -75,6 +135,8 @@ export interface PlatformCapabilities {
   desktop: boolean;
   /** 系统文件夹选择框可以一次选多个文件夹 */
   multiFolderPick: boolean;
+  /** 用 meme-generator 的模板做表情（桌面端） */
+  memeTemplates: boolean;
 }
 
 /**
@@ -160,4 +222,14 @@ export interface Platform {
   setLaunchAtLogin(on: boolean): Promise<void>;
   /** 窗口底色跟随界面主题（桌面端），避免深色模式下窗口边缘露白 */
   setWindowBackground(color: string): Promise<void>;
+
+  // —— 模板表情（meme-generator，桌面端）——
+  memeStatus(): Promise<MemeStatus>;
+  memeList(): Promise<MemeTemplate[]>;
+  memePreview(key: string, options?: MemeOptionValues): Promise<MemeResult>;
+  memeGenerate(key: string, images: MemeImageInput[], texts: string[], options: MemeOptionValues): Promise<MemeResult>;
+  /** 下载模板用的字体（一次性）；进度走 onMemeProgress */
+  memeDownloadFonts(): Promise<void>;
+  /** 字体 / 素材下载进度；返回取消订阅的函数 */
+  onMemeProgress(cb: (p: MemeProgress) => void): () => void;
 }

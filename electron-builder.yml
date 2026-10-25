@@ -7,7 +7,14 @@ directories:
 files:
   - dist/**
   - dist-electron/**
+  - '!dist-electron/meme-native/**'
   - package.json
+# 模板表情的原生库：按目标平台只带一份，放在 resources/meme/（asar 之外）
+extraResources:
+  - from: dist-electron/meme-native/${os}-${arch}
+    to: meme
+    filter:
+      - '*.node'
 asar: true
 # 网页“一键导入”用的协议：emojimanager://subscribe?url=…
 protocols:
