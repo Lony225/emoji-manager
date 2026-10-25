@@ -1,7 +1,7 @@
 {
   "name": "emoji-manager",
   "productName": "Emoji Manager",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "跨平台表情包管理器：分类、标签、订阅同步",
   "author": "LONY",
   "license": "MIT",
