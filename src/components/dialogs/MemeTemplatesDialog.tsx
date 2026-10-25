@@ -6,6 +6,7 @@ import type { MemeOptionSchema, MemeOptionValues, MemeProgress, MemeStatus, Meme
 import type { Sticker } from '../../core/types';
 import { errorMessage } from '../../core/subscription/sync';
 import { fileStem, mimeFromExt } from '../../core/images';
+import { copyImageBytes } from '../../core/clipboard';
 import { flattenTree } from '../../core/selectors';
 import {
   checkImageCount,
@@ -405,6 +406,15 @@ function TemplateEditor({ template: t, enabled, initialStickerId, progress }: { 
       toast(`保存失败：${errorMessage(e)}`, 'error');
     }
   };
+  const copyMade = async () => {
+    if (!made) return;
+    try {
+      const how = await copyImageBytes(made.bytes, made.ext, finalName, useLibraryStore.getState().settings.copyMode);
+      toast(how === 'file' ? '已复制（作为文件），粘贴即可发送' : '已复制图片，粘贴即可发送', 'success');
+    } catch (e) {
+      toast(`复制失败：${errorMessage(e)}`, 'error');
+    }
+  };
   const saveAs = async () => {
     if (!made) return;
     try {
@@ -559,7 +569,10 @@ function TemplateEditor({ template: t, enabled, initialStickerId, progress }: { 
             </div>
           </div>
           <div className="row">
-            <button type="button" className="btn primary meme-save" onClick={() => void save()}>
+            <button type="button" className="btn primary meme-copy" onClick={() => void copyMade()} title="直接放进剪贴板，不保存到表情库">
+              <Icon name="copy" size={15} /> 复制
+            </button>
+            <button type="button" className="btn meme-save" onClick={() => void save()}>
               保存为表情
             </button>
             <button type="button" className="btn" onClick={() => void saveAs()}>

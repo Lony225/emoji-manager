@@ -38,6 +38,7 @@ export function createElectronPlatform(bridge: EmojiBridge): Platform {
     },
     copyFile: (rel) => bridge.copyFile(rel),
     copyFiles: (rels) => bridge.copyFiles(rels),
+    copyFileBytes: (name, bytes) => bridge.copyFileBytes(name, bytes),
     saveFile: (name, bytes) => bridge.saveFile(name, bytes),
     async pickFolders() {
       const r = await bridge.pickFolders();

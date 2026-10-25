@@ -786,6 +786,9 @@ async function main() {
     await cdp.eval("document.querySelector('.meme-generate').click()");
     const newsResult = await cdp.waitFor("document.querySelector('.meme-result img') ? 1 : (document.querySelector('.meme-editor .error-text')?.textContent || 0)", 30000, '喜报生成结果').catch((e) => e.message);
     check('文字模板生成成功', newsResult === 1, String(newsResult));
+    await cdp.eval("document.querySelector('.meme-copy')?.click()");
+    const copyNews = await cdp.waitFor("window.__uiStore.getState().toasts.map((t) => t.kind + ':' + t.message).find((m) => /已复制|复制失败/.test(m)) || ''", 10000, '复制提示').catch(() => '');
+    check('生成结果直接复制到剪贴板（PNG 按图片）', /^success:已复制图片/.test(copyNews), copyNews);
     await cdp.eval("document.querySelector('.meme-save')?.click()");
     const madeNews = await cdp.waitFor("(() => { const x = window.__emojiStore.getState().stickers.find((t) => t.name === '喜报 端到端测试'); return x ? x.ext : ''; })()", 10000, '喜报存为表情').catch(() => '');
     assertEq('生成结果保存为表情（PNG）', madeNews, 'png');
@@ -802,6 +805,10 @@ async function main() {
     await cdp.eval("document.querySelector('.meme-generate').click()");
     const petResult = await cdp.waitFor("document.querySelector('.meme-result img') ? 1 : (document.querySelector('.meme-editor .error-text')?.textContent || 0)", 60000, '摸头生成结果').catch((e) => e.message);
     check('图片模板生成成功', petResult === 1, String(petResult));
+    await cdp.eval("window.__uiStore.getState().toasts.length = 0; window.__uiStore.setState({ toasts: [] })");
+    await cdp.eval("document.querySelector('.meme-copy')?.click()");
+    const copyPet = await cdp.waitFor("window.__uiStore.getState().toasts.map((t) => t.kind + ':' + t.message).find((m) => /已复制|复制失败/.test(m)) || ''", 15000, '复制提示').catch(() => '');
+    check('GIF 结果按文件复制（粘贴后仍是动图）', /^success:已复制（作为文件）/.test(copyPet), copyPet);
     await cdp.eval("document.querySelector('.meme-save')?.click()");
     const madePet = await cdp.waitFor("(() => { const x = window.__emojiStore.getState().stickers.find((t) => t.name.startsWith('摸 ')); return x ? x.file : ''; })()", 10000, '摸头存为表情').catch(() => '');
     check('图片模板生成 GIF 并保存', /\.gif$/.test(madePet), madePet);

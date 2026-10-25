@@ -39,6 +39,7 @@ const bridge: EmojiBridge = {
   paste: () => invoke('clipboard:paste'),
   copyFile: (rel) => invoke('clipboard:copyFile', rel),
   copyFiles: (rels) => invoke('clipboard:copyFiles', rels),
+  copyFileBytes: (name, bytes) => invoke('clipboard:copyFileBytes', name, bytes),
   saveFile: (name, bytes) => invoke('dialog:saveFile', name, bytes),
   pickFolders: () => invoke('dialog:pickFolders'),
   readPicked: (token, p) => invoke('fs:readPicked', token, p),

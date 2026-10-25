@@ -47,6 +47,7 @@ export interface EmojiBridge {
   paste(): Promise<void>;
   copyFile(rel: string): Promise<void>;
   copyFiles(rels: string[]): Promise<void>;
+  copyFileBytes(name: string, bytes: Uint8Array): Promise<void>;
   saveFile(suggestedName: string, bytes: Uint8Array): Promise<{ saved: boolean; path?: string }>;
   pickFolders(): Promise<PickedFoldersResult | null>;
   /** 读取 pickFolders 列出过的文件 */

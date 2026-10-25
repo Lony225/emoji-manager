@@ -183,6 +183,8 @@ export interface Platform {
   copyFile(rel: string): Promise<void>;
   /** 把多个文件一起放进剪贴板 */
   copyFiles(rels: string[]): Promise<void>;
+  /** 把一段还没存进资料库的图片数据作为文件放进剪贴板（桌面端先写到临时目录），动图粘贴后仍是动图 */
+  copyFileBytes(name: string, bytes: Uint8Array): Promise<void>;
   /** 让用户选择位置保存一个文件（桌面端弹保存对话框，浏览器触发下载） */
   saveFile(suggestedName: string, bytes: Uint8Array): Promise<{ saved: boolean; path?: string }>;
   /** 选择一个或多个文件夹（取消返回 null）；只列出图片文件，内容按需读取 */

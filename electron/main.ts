@@ -404,6 +404,30 @@ async function pickFolders(win: BrowserWindow | null) {
   return { token, parentName, folders };
 }
 
+function clipboardTempDir(): string {
+  return path.join(app.getPath('temp'), 'emoji-manager-clipboard');
+}
+
+/** 启动时清掉一天前复制用的临时文件（剪贴板里可能还引用着最近的，不能立刻删） */
+async function cleanClipboardTemp(): Promise<void> {
+  const dir = clipboardTempDir();
+  let entries: string[];
+  try {
+    entries = await fsp.readdir(dir);
+  } catch {
+    return;
+  }
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  for (const name of entries) {
+    const abs = path.join(dir, name);
+    try {
+      if ((await fsp.stat(abs)).mtimeMs < cutoff) await fsp.rm(abs, { force: true });
+    } catch {
+      /* 忽略 */
+    }
+  }
+}
+
 function safeFileName(name: string): string {
   const clean = name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').trim().slice(0, 120);
   return clean || '表情包';
@@ -951,6 +975,17 @@ function registerIpc(): void {
     if (!Array.isArray(rels) || rels.length === 0 || rels.length > 500) throw new Error('一次最多复制 500 个文件');
     await copyFilesToClipboard(rels.map((r) => safeJoin(String(r))));
   });
+  // 还没保存成表情的图片（模板生成的结果）也能按文件复制：先写到临时目录，粘贴到聊天软件时动图照样是动图
+  ipcMain.handle('clipboard:copyFileBytes', async (_e, name: unknown, bytes: unknown) => {
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength < 8 || bytes.byteLength > MAX_DOWNLOAD) throw new Error('图片数据无效');
+    const dir = clipboardTempDir();
+    await fsp.mkdir(dir, { recursive: true });
+    // 文件名带内容哈希：同一张图反复复制不会堆出一堆文件
+    const stamp = crypto.createHash('md5').update(bytes).digest('hex').slice(0, 8);
+    const abs = path.join(dir, `${stamp}-${safeFileName(typeof name === 'string' ? name : '表情')}`);
+    if (!fs.existsSync(abs)) await atomicWrite(abs, bytes);
+    await copyFilesToClipboard([abs]);
+  });
   ipcMain.handle('dialog:saveFile', async (e, name: string, bytes: Uint8Array) =>
     saveFileDialog(BrowserWindow.fromWebContents(e.sender), name, bytes),
   );
@@ -1037,6 +1072,7 @@ if (!gotLock) {
     await fsp.mkdir(path.join(libraryDir, 'stickers'), { recursive: true });
     loadWindowState();
     loadUsage();
+    void cleanClipboardTemp();
     registerProtocols();
     registerIpc();
     setupMenu();

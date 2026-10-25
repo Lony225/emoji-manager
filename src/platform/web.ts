@@ -197,6 +197,9 @@ export function createWebPlatform(): Platform {
     async copyFiles() {
       throw new Error('浏览器中不支持复制文件');
     },
+    async copyFileBytes() {
+      throw new Error('浏览器中不支持复制文件');
+    },
     pickFolders() {
       // 浏览器的目录选择框一次只能选一个文件夹
       return new Promise((resolve) => {

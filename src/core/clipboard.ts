@@ -1,5 +1,5 @@
 import { platform } from '../platform';
-import { maybeAnimated } from './images';
+import { maybeAnimated, mimeFromExt } from './images';
 import type { CopyMode, Sticker } from './types';
 
 /** 把图片地址渲染成 PNG 字节（动图取当前帧），用于复制到剪贴板 */
@@ -44,6 +44,31 @@ export async function copySticker(sticker: Sticker, mode: CopyMode): Promise<Eff
   if (!platform.capabilities.copyImage) throw new Error('当前环境不支持复制图片');
   const png = await renderPng(await platform.fileUrl(sticker.file));
   await platform.copyImagePng(png);
+  return 'image';
+}
+
+/**
+ * 复制一段还没保存成表情的图片数据（比如模板刚生成的结果）：
+ * 规则和复制表情一样——动图在能复制文件的平台上按文件复制（保留动画），其他按 PNG 图片复制。
+ */
+export async function copyImageBytes(bytes: Uint8Array, ext: string, name: string, mode: CopyMode): Promise<EffectiveCopy> {
+  const caps = platform.capabilities;
+  const asFile = mode === 'file' ? caps.copyFile : mode === 'image' ? false : caps.copyFile && maybeAnimated(ext);
+  if (asFile) {
+    await platform.copyFileBytes(`${name}.${ext}`, bytes);
+    return 'file';
+  }
+  if (!caps.copyImage) throw new Error('当前环境不支持复制图片');
+  if (ext === 'png') {
+    await platform.copyImagePng(bytes);
+    return 'image';
+  }
+  const url = URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: mimeFromExt(ext) }));
+  try {
+    await platform.copyImagePng(await renderPng(url));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
   return 'image';
 }
 
