@@ -9,7 +9,9 @@ files:
   - dist-electron/**
   - '!dist-electron/meme-native/**'
   - package.json
-# 模板表情的原生库：按目标平台只带一份，放在 resources/meme/（asar 之外）
+# 模板表情的原生库：按目标平台只带一份，放在 resources/meme/（asar 之外）。
+# @memecrafters/meme-generator 放在 devDependencies：只在构建时用来取各平台的 .node；
+# 若放进 dependencies，macOS 上的 electron-builder 会把 5 个平台的原生包一起塞进 asar.unpacked（多出约 150 MB）。
 extraResources:
   - from: dist-electron/meme-native/${os}-${arch}
     to: meme
