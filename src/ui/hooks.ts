@@ -9,11 +9,9 @@ export function useTheme(): void {
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
       document.documentElement.dataset.theme = theme === 'system' ? (mql.matches ? 'dark' : 'light') : theme;
-      // 窗口本身的底色也设成一样的，否则深色模式下窗口边缘（缩放比例不是整数时）会露出一条浅色
-      if (platform.capabilities.desktop) {
-        const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
-        if (/^#[0-9a-f]{6}$/i.test(bg)) void platform.setWindowBackground(bg).catch(() => undefined);
-      }
+      // 窗口本身的底色也设成一样的（桌面端：深色模式下窗口边缘不露白；安卓：状态栏图标颜色跟着换）
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+      if (/^#[0-9a-f]{6}$/i.test(bg)) void platform.setWindowBackground(bg).catch(() => undefined);
     };
     apply();
     mql.addEventListener('change', apply);

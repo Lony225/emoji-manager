@@ -1,6 +1,6 @@
 import { useEffect, useRef, type MouseEvent } from 'react';
 import { useLibraryStore } from '../core/store';
-import { useUiStore } from '../ui/uiStore';
+import { useUiStore, type MenuItem } from '../ui/uiStore';
 import { importImages, openMemeTemplates, pasteFromClipboard, pickAndImportFolders, pickAndImportPackage, pickAndMake, pickFiles } from '../ui/actions';
 import { useNarrow } from '../ui/hooks';
 import { platform } from '../platform';
@@ -39,25 +39,20 @@ export function TopBar() {
     });
 
   const onImport = (e: MouseEvent<HTMLButtonElement>) => {
-    if (platform.kind === 'capacitor') {
-      importPictures();
-      return;
-    }
     const r = e.currentTarget.getBoundingClientRect();
-    openMenu({
-      x: r.left,
-      y: r.bottom + 4,
-      items: [
-        { label: '选择图片…', icon: 'image', onSelect: importPictures },
-        {
-          label: platform.capabilities.multiFolderPick ? '导入文件夹（可多选，成为分类）…' : '导入文件夹（成为分类）…',
-          icon: 'folder',
-          onSelect: () => void pickAndImportFolders(),
-        },
-        { label: '导入表情包压缩包（zip）…', icon: 'inbox', onSelect: () => void pickAndImportPackage() },
-        { label: '粘贴剪贴板里的图片（Ctrl+V）', icon: 'paste', onSelect: () => void pasteFromClipboard() },
-      ],
-    });
+    // 安卓：系统选择器选不了文件夹，其余入口一样
+    const app = platform.kind === 'capacitor';
+    const items: MenuItem[] = [{ label: app ? '从相册 / 文件里选图片…' : '选择图片…', icon: 'image', onSelect: importPictures }];
+    if (!app) {
+      items.push({
+        label: platform.capabilities.multiFolderPick ? '导入文件夹（可多选，成为分类）…' : '导入文件夹（成为分类）…',
+        icon: 'folder',
+        onSelect: () => void pickAndImportFolders(),
+      });
+    }
+    items.push({ label: '导入表情包压缩包（zip）…', icon: 'inbox', onSelect: () => void pickAndImportPackage() });
+    items.push({ label: app ? '粘贴剪贴板里的图片' : '粘贴剪贴板里的图片（Ctrl+V）', icon: 'paste', onSelect: () => void pasteFromClipboard() });
+    openMenu({ x: r.left, y: r.bottom + 4, items });
   };
 
   const onMake = (e: MouseEvent<HTMLButtonElement>) => {
@@ -102,7 +97,7 @@ export function TopBar() {
           ref={inputRef}
           type="search"
           value={query}
-          placeholder="搜索名称、标签…（Ctrl+F）"
+          placeholder={narrow ? '搜索名称、标签…' : '搜索名称、标签…（Ctrl+F）'}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="搜索表情"
         />
@@ -113,10 +108,10 @@ export function TopBar() {
         )}
       </div>
       <span className="spacer" />
-      <button className="btn" onClick={onImport} title="导入图片 / 文件夹 / zip，粘贴剪贴板">
+      <button className="btn" onClick={onImport} title="导入图片 / 文件夹 / zip，粘贴剪贴板" aria-label="导入">
         <Icon name="image" /> {!narrow && '导入'}
       </button>
-      <button className="btn make-btn" onClick={onMake} title="制作表情：给图片加文字，或用模板生成">
+      <button className="btn make-btn" onClick={onMake} title="制作表情：给图片加文字，或用模板生成" aria-label="制作">
         <Icon name="sparkles" /> {!narrow && '制作'}
       </button>
       {SUBSCRIPTIONS_ENABLED && (

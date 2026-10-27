@@ -50,6 +50,18 @@ function networkHint(e: unknown): Error {
 
 type Stored = Uint8Array | string | undefined;
 
+/** Web Share API 分享文件；用户关掉分享面板返回 false */
+async function shareFiles(files: File[]): Promise<boolean> {
+  if (!navigator.canShare || !navigator.canShare({ files })) throw new Error('当前浏览器不支持分享文件');
+  try {
+    await navigator.share({ files });
+    return true;
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') return false;
+    throw e;
+  }
+}
+
 /** 纯浏览器实现：文件存 IndexedDB，图片用 blob: 地址显示 */
 export function createWebPlatform(): Platform {
   let db: IDBDatabase;
@@ -255,10 +267,24 @@ export function createWebPlatform(): Platform {
       const v = await get(rel);
       if (v === undefined || typeof v === 'string') throw new Error('文件不存在');
       const ext = extFromName(rel) ?? 'png';
-      const file = new File([v as unknown as BlobPart], `${name}.${ext}`, { type: mimeFromExt(ext) });
-      if (!navigator.canShare || !navigator.canShare({ files: [file] })) throw new Error('当前浏览器不支持分享文件');
-      await navigator.share({ files: [file] });
+      return shareFiles([new File([v as unknown as BlobPart], `${name}.${ext}`, { type: mimeFromExt(ext) })]);
     },
+    async shareMany(rels) {
+      const files: File[] = [];
+      for (const rel of rels) {
+        const v = await get(rel);
+        if (v === undefined || typeof v === 'string') continue;
+        const ext = extFromName(rel) ?? 'png';
+        files.push(new File([v as unknown as BlobPart], rel.split('/').pop() ?? `sticker.${ext}`, { type: mimeFromExt(ext) }));
+      }
+      if (files.length === 0) throw new Error('文件不存在');
+      return shareFiles(files);
+    },
+    async readClipboard() {
+      return null;
+    },
+    onReceivedFiles() {},
+    onBack() {},
     async revealInFolder() {
       throw new Error('浏览器中不支持此操作');
     },

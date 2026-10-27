@@ -4,7 +4,7 @@ import { maybeAnimated } from '../core/images';
 import { useLibraryStore } from '../core/store';
 import { useFileUrl } from '../ui/hooks';
 import { useUiStore, type StampState } from '../ui/uiStore';
-import { copyStickerWithFeedback, openStickerMenu, rangeSelect } from '../ui/actions';
+import { openStickerMenu, primaryAction, rangeSelect } from '../ui/actions';
 import { needsThumb, requestThumb } from '../ui/thumbs';
 import { Icon } from '../ui/icons';
 
@@ -110,7 +110,7 @@ export const StickerCard = memo(function StickerCard({ sticker, selected, stamp,
       rangeSelect(sticker.id);
       return;
     }
-    void copyStickerWithFeedback(sticker);
+    primaryAction(sticker);
   };
 
   const onCheck = (e: MouseEvent) => {
@@ -131,12 +131,14 @@ export const StickerCard = memo(function StickerCard({ sticker, selected, stamp,
     openStickerMenu(e.clientX, e.clientY, menuIds());
   };
 
-  // 触屏长按 = 右键（为以后的手机版准备）
+  // 触屏长按 = 右键（WebView 自己也会在长按时发 contextmenu 事件，两条路开的是同一个菜单）
   const onPointerDown = (e: PointerEvent) => {
     if (e.pointerType !== 'touch') return;
     const { clientX, clientY } = e;
     longPress.current = setTimeout(() => {
       suppressClick.current = true;
+      // 长按之后不一定有 click 到来，别让下一次正常点击被吞掉
+      setTimeout(() => (suppressClick.current = false), 700);
       openStickerMenu(clientX, clientY, menuIds());
     }, 480);
   };
@@ -189,7 +191,7 @@ export const StickerCard = memo(function StickerCard({ sticker, selected, stamp,
         if (renaming) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          void copyStickerWithFeedback(sticker);
+          primaryAction(sticker);
         }
       }}
     >

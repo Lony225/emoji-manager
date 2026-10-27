@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 分享 / 复制时通过 FileProvider 暴露给其他应用的目录：资料库在 files/，临时文件在 cache/ -->
+    <files-path name="files" path="." />
+    <cache-path name="cache" path="." />
+    <external-path name="my_images" path="." />
+</paths>

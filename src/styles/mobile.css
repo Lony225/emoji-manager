@@ -1,0 +1,226 @@
+/* ---- 安全区与触屏适配（安卓应用：内容延伸到状态栏 / 导航栏下面）---- */
+:root {
+  /* Capacitor 会注入 --safe-area-inset-*；新内核直接认 env()；桌面端全是 0 */
+  --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --sal: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --sar: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+}
+
+.topbar {
+  padding-top: calc(10px + var(--sat));
+  padding-left: calc(14px + var(--sal));
+  padding-right: calc(14px + var(--sar));
+}
+
+.grid-scroll {
+  padding-bottom: calc(24px + var(--sab));
+  padding-left: calc(16px + var(--sal));
+  padding-right: calc(16px + var(--sar));
+}
+
+/* 有多选条时，导航栏的位置由多选条留 */
+.app:has(.selectionbar) .grid-scroll {
+  padding-bottom: 24px;
+}
+
+.selectionbar {
+  padding-bottom: calc(8px + var(--sab));
+  padding-left: calc(16px + var(--sal));
+  padding-right: calc(16px + var(--sar));
+}
+
+.toasts {
+  bottom: calc(24px + var(--sab));
+}
+
+.backdrop {
+  padding: calc(20px + var(--sat)) calc(20px + var(--sar)) calc(20px + var(--sab)) calc(20px + var(--sal));
+}
+
+.dialog {
+  max-height: calc(100vh - 40px - var(--sat) - var(--sab));
+}
+
+.menu {
+  max-height: calc(100vh - 16px - var(--sat) - var(--sab));
+  overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+  /* 抽屉模式下侧栏贴着屏幕顶边 */
+  .sidebar {
+    padding-top: calc(8px + var(--sat));
+    padding-bottom: calc(24px + var(--sab));
+    padding-left: calc(8px + var(--sal));
+  }
+}
+
+/* 触屏没有“悬停”：去掉悬浮效果，点选圈常显一点 */
+@media (hover: none) {
+  .card:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: var(--line);
+  }
+
+  .card.selected:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+
+  .card .check {
+    opacity: 0.55;
+  }
+
+  .card .name:hover,
+  .card .name-row .cat:hover {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .side-item:hover {
+    background: none;
+  }
+
+  .side-item.active:hover {
+    background: var(--tile);
+  }
+
+  .btn:hover:not(:disabled) {
+    background: var(--tile);
+  }
+
+  .btn.primary:hover:not(:disabled) {
+    background: var(--accent);
+    filter: none;
+  }
+
+  .btn.ghost:hover:not(:disabled) {
+    background: transparent;
+  }
+}
+
+/* 手指点：菜单项、侧栏行、按钮都高一些 */
+@media (pointer: coarse) {
+  .menu {
+    min-width: 230px;
+    padding: 6px;
+  }
+
+  .menu button {
+    height: 42px;
+    font-size: 14px;
+  }
+
+  .btn.sm {
+    height: 30px;
+  }
+
+  .side-item {
+    height: 38px;
+  }
+
+  .side-item.child {
+    height: 34px;
+  }
+
+  .chip {
+    height: 28px;
+  }
+
+  .subtabs .chip {
+    height: 30px;
+  }
+
+  .search input {
+    height: 36px;
+    font-size: 14px;
+  }
+
+  .card .name-row {
+    font-size: 12px;
+  }
+
+  .filterbar .select {
+    height: 30px;
+  }
+
+  .segmented button {
+    height: 28px;
+  }
+}
+
+/* 手机：对话框从底部弹出、占满宽度，网格更紧凑 */
+@media (max-width: 600px) {
+  .backdrop {
+    padding: calc(24px + var(--sat)) 0 0;
+    place-items: end center;
+  }
+
+  .dialog,
+  .dialog.wide,
+  .dialog.maker,
+  .dialog.memes {
+    width: 100%;
+    max-width: none;
+    max-height: 100%;
+    border-radius: 18px 18px 0 0;
+    border-bottom: 0;
+  }
+
+  .dialog .body {
+    padding: 12px 16px;
+  }
+
+  .dialog footer {
+    flex-wrap: wrap;
+    padding: 0 16px calc(14px + var(--sab));
+  }
+
+  .dialog header {
+    padding: 14px 16px 0;
+  }
+
+  .maker-stage {
+    height: min(360px, 46vh);
+  }
+
+  .topbar {
+    gap: 6px;
+    padding-left: calc(8px + var(--sal));
+    padding-right: calc(8px + var(--sar));
+  }
+
+  .brand {
+    margin-right: 0;
+  }
+
+  .filterbar {
+    padding: 8px 12px 4px;
+    gap: 8px;
+  }
+
+  .subtabs {
+    padding: 0 12px 8px;
+  }
+
+  .grid-scroll {
+    padding-left: calc(10px + var(--sal));
+    padding-right: calc(10px + var(--sar));
+  }
+
+  .grid {
+    gap: 8px;
+  }
+
+  .selectionbar {
+    gap: 6px;
+    padding-left: calc(10px + var(--sal));
+    padding-right: calc(10px + var(--sar));
+  }
+
+  .toast {
+    max-width: calc(100vw - 32px);
+  }
+}

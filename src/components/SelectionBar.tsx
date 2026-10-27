@@ -1,7 +1,7 @@
 import { useLibraryStore } from '../core/store';
 import { useUiStore } from '../ui/uiStore';
-import { confirmDeleteStickers, copyManyWithFeedback, getVisibleOrder, openExportDialog, startRename } from '../ui/actions';
-import { platform } from '../platform';
+import { confirmDeleteStickers, copyManyWithFeedback, getVisibleOrder, openExportDialog, shareMany, startRename } from '../ui/actions';
+import { isMobile, platform } from '../platform';
 import { Icon } from '../ui/icons';
 
 export function SelectionBar() {
@@ -15,6 +15,7 @@ export function SelectionBar() {
   const n = selection.size;
   const visible = getVisibleOrder();
   const allSelected = visible.length > 0 && visible.every((id) => selection.has(id));
+  const canShare = isMobile && platform.capabilities.share;
 
   const favoriteAll = () => {
     const stickers = useLibraryStore.getState().stickers.filter((s) => selection.has(s.id));
@@ -32,8 +33,13 @@ export function SelectionBar() {
           <Icon name="selectAll" size={15} /> 全选
         </button>
       )}
+      {canShare && (
+        <button className="btn sm primary" onClick={() => void shareMany(ids)} title="打开系统分享面板，一起发送">
+          <Icon name="share" size={15} /> 分享{n > 1 ? ` ${n} 个` : ''}
+        </button>
+      )}
       {platform.capabilities.copyFile && (
-        <button className="btn sm primary" onClick={() => void copyManyWithFeedback(ids)} title="作为多个文件一起复制，粘贴即可发送">
+        <button className={`btn sm${canShare ? '' : ' primary'}`} onClick={() => void copyManyWithFeedback(ids)} title="作为多个文件一起复制，粘贴即可发送">
           <Icon name="copy" size={15} /> 复制{n > 1 ? ` ${n} 个` : ''}
         </button>
       )}
@@ -56,9 +62,11 @@ export function SelectionBar() {
         <Icon name="trash" size={15} /> 删除
       </button>
       <span className="spacer" />
-      <span className="hint">
-        拖动框选 · <kbd>Ctrl</kbd>+点击 多选 · <kbd>Shift</kbd>+点击 范围 · <kbd>Ctrl</kbd>+<kbd>A</kbd> 全选 · <kbd>Esc</kbd> 取消
-      </span>
+      {!isMobile && (
+        <span className="hint">
+          拖动框选 · <kbd>Ctrl</kbd>+点击 多选 · <kbd>Shift</kbd>+点击 范围 · <kbd>Ctrl</kbd>+<kbd>A</kbd> 全选 · <kbd>Esc</kbd> 取消
+        </span>
+      )}
       <button className="btn sm ghost" onClick={clearSelection}>
         取消
       </button>

@@ -84,6 +84,7 @@ export function pickAsset(assets: ReleaseAsset[], os: Platform['os'], arch: stri
     return byName(want) ?? byName(/\.dmg$/i);
   }
   if (os === 'linux') return byName(/\.AppImage$/i);
+  if (os === 'android') return byName(/android.*\.apk$/i) ?? byName(/\.apk$/i);
   return undefined;
 }
 

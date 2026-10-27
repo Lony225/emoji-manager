@@ -39,6 +39,7 @@ import { runUpdateCheck } from './ui/update';
 import { installDeepLinkHandler } from './ui/deeplink';
 import { SUBSCRIPTIONS_ENABLED } from './core/features';
 import { installThumbWorker } from './ui/thumbs';
+import { installMobileHandlers } from './ui/mobile';
 import { useTheme } from './ui/hooks';
 
 function useShortcuts() {
@@ -215,6 +216,7 @@ export function App() {
     if (!loaded) return;
     installDeepLinkHandler();
     installThumbWorker();
+    installMobileHandlers();
     if (!useLibraryStore.getState().settings.checkUpdatesOnStart) return;
     const timer = setTimeout(() => void runUpdateCheck(false), 4000);
     return () => clearTimeout(timer);

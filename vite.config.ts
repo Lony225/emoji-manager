@@ -19,7 +19,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    target: 'chrome130',
+    // 同一份页面也装进安卓的 WebView，国产手机上的 WebView 版本可能比较旧，语法降到 Chrome 100
+    target: 'chrome100',
   },
   server: {
     port: 5173,

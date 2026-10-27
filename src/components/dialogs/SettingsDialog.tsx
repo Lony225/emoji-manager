@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLibraryStore } from '../../core/store';
 import { useUiStore } from '../../ui/uiStore';
 import type { CopyMode, Theme } from '../../core/types';
-import { platform } from '../../platform';
+import { isMobile, platform } from '../../platform';
 import { errorMessage } from '../../core/subscription/sync';
 import { openExportDialog, pickAndImportPackage } from '../../ui/actions';
 import { runUpdateCheck } from '../../ui/update';
@@ -75,9 +75,30 @@ export function SettingsDialog() {
         </div>
       </div>
 
+      {isMobile && caps.share && (
+        <div className="setting">
+          <div className="text">
+            点一下表情时
+            <small>“分享”打开系统分享面板，直接发到微信 / QQ；“复制”放进剪贴板，支持粘贴图片的聊天软件可以直接粘贴。长按表情还有更多操作。</small>
+          </div>
+          <div className="segmented" role="group" aria-label="点一下表情时">
+            {(
+              [
+                ['share', '分享'],
+                ['copy', '复制'],
+              ] as const
+            ).map(([key, label]) => (
+              <button key={key} className={settings.tapAction === key ? 'active' : ''} onClick={() => updateSettings({ tapAction: key })}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="setting">
         <div className="text">
-          点击表情时的复制方式
+          {isMobile ? '复制方式' : '点击表情时的复制方式'}
           <small>动图按文件复制能保留动画；粘贴后背景发黑的话，改成“总是复制文件”试试。</small>
         </div>
         <select

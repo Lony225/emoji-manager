@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 自适应图标的底色 = build/icon.png 的黄色底，前景图里圆角方块的边角就和底色融为一体 -->
+    <color name="ic_launcher_background">#FFD233</color>
+</resources>

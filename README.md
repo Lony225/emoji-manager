@@ -22,11 +22,13 @@
 | Windows 10 / 11 | `Emoji.Manager-x.y.z-portable.exe` | 便携版：双击直接运行，不写注册表，删掉即卸载 |
 | macOS（Apple Silicon） | `Emoji.Manager-x.y.z-mac-arm64.dmg` | M1 / M2 / M3 / M4 |
 | macOS（Intel） | `Emoji.Manager-x.y.z-mac-x64.dmg` | |
+| Android 7.0+ | `Emoji.Manager-x.y.z-android.apk` | 手机版：点一下表情就打开系统分享面板发到微信 / QQ，长按有更多操作；相册 / 微信里「分享到」本应用即可存入 |
 
 安装包目前没有代码签名：
 
 - Windows 的 SmartScreen 提示时，点「更多信息 → 仍要运行」。
 - macOS 首次打开被拦下时，到「系统设置 → 隐私与安全性」里点「仍要打开」。
+- Android 需要允许「安装未知来源应用」；apk 用自己的签名密钥签名，以后的版本可以直接覆盖安装。
 
 应用启动时会检查 GitHub 上的新版本，有更新会弹窗提示并给出下载链接，不会自动安装；可在设置里关闭。
 
@@ -41,6 +43,7 @@
 | 制作 | 给任意表情或图片加文字做成新表情：实时预览、拖动摆放，字体 / 字号 / 颜色 / 描边 / 阴影 / 底色可调，有一键样式；动图逐帧加字并重新编成 GIF，动画不丢。「用模板做表情」内置 [meme-generator](https://github.com/MemeCrafters/meme-generator-rs) 的 299 个沙雕模板（摸头、喜报、举牌……），选图填字即生成，直接复制或存为表情；首次使用下载一次字体（约 77 MB），模板素材按需下载 |
 | 命名 | 每个表情下方一行显示「名称 / 分类」，点名称或按 `F2` 就地改名；多选后「批量改名」：统一名称加序号、加前缀后缀、查找替换（支持正则）、逐个修改，改前实时预览 |
 | 使用 | 点击即复制（动图默认按文件复制以保留动画）；网格显示缩略图，动图播放可选全部 / 自动 / 悬停，几百张 GIF 也不卡；拖动框选、`Ctrl` / `Shift` 点选、筛选条上的「全选」按钮（或 `Ctrl+A`），多选后一键把多个文件一起复制、粘贴即发送 |
+| 手机 | Android 版是同一套界面：点一下表情打开系统分享面板，选微信 / QQ 直接发送（可在设置里改成复制到剪贴板）；长按表情出菜单；多选后一起分享；相册、微信、浏览器里把图片「分享到」本应用即可存入，zip 表情包也能这样导入；导出 zip 走分享面板，发给文件传输助手或存到文件应用。模板表情、浮窗、文件夹导入是桌面版才有的 |
 | 浮窗 | 全局快捷键（默认 `Alt+Shift+E`）呼出置顶小窗：打开即是「最近使用」，输入即搜索，`Enter` 或点击复制后自动隐藏；可「固定」常驻 |
 | 托盘 | 关闭主窗口最小化到托盘，快捷键照常可用；安装版可设开机自启 |
 | 订阅（暂未开放） | 输入 JSON 清单地址即同步；增量更新、保留你改过的名字 / 标签 / 分类、启动时自动同步。当前版本先隐藏了入口，之后开放 |
@@ -88,6 +91,7 @@
 
 - Windows：`%APPDATA%\emoji-manager\library`
 - macOS：`~/Library/Application Support/emoji-manager/library`
+- Android：应用私有目录 `files/library`（卸载应用会一并删除，备份请用「设置 → 导出全部」）
 - 目录内：`library.json`（资料）、`library.json.bak`（上一版备份）、`stickers/`（图片）、`usage.json`（最近使用记录）
 - 模板表情的字体、素材和预览缓存在上一级的 `meme-generator/` 目录（不随数据目录迁移，删掉会重新下载）
 - 可在「设置 → 数据目录 → 更改」换到任意目录（会把现有数据复制过去）
@@ -119,7 +123,15 @@ pnpm e2e:electron     # 启动真实 Electron 跑完整流程（导入、订阅�
 ```bash
 pnpm dist:win         # release/ 下生成 Windows 安装包和便携版
 pnpm dist:mac         # 需要在 macOS 上执行
+pnpm dist:android     # release/ 下生成 Android apk（见下）
 ```
+
+Android 版用 [Capacitor](https://capacitorjs.com/) 把同一套页面装进原生壳，工程在 `android/`：
+
+- 需要 Android SDK（设 `ANDROID_HOME`，或在 `android/local.properties` 里写 `sdk.dir=…`）和 JDK 21（装了 Android Studio 的话脚本会自动用它自带的 `jbr`，也可以设 `EMOJI_ANDROID_JAVA_HOME`）。缺少的 SDK 组件（API 36 平台等）Gradle 会自动下载。
+- 签名：把密钥信息写在 `android/keystore.properties`（不入库）里，格式是 `storeFile=…`、`storePassword=…`、`keyAlias=…`、`keyPassword=…`；也可以用环境变量 `EMOJI_ANDROID_KEYSTORE_PROPERTIES` 指向这个文件。没有的话用调试签名，能装能用，但不能和正式签名的包互相覆盖安装。
+- `pnpm dist:android --dev` 给文件名加 `-dev-日期` 后缀，`--debug` 打调试包，`pnpm android:open` 用 Android Studio 打开工程。
+- 版本号和 versionCode 跟着 `package.json` 走（1.3.0 → 10300）。
 
 ## 发布新版本
 
@@ -136,11 +148,12 @@ GitHub Actions 会在 Windows 和 macOS 上构建，把安装包连同 CHANGELOG
 
 ```
 electron/        主进程、preload（文件、下载、剪贴板、自定义协议、托盘、浮窗、快捷键）；memes.ts / meme-worker.ts 是模板表情引擎
+android/         Android 壳（Capacitor）；app/src/main/java 里的 EmojiNativePlugin 负责剪贴板、接收分享、协议链接
 src/core/        与界面无关的核心：数据模型、订阅清单解析、同步算法、导出导入、store
-src/platform/    平台接口 + Electron / 浏览器两套实现（Android 以后在这里加）
+src/platform/    平台接口 + Electron / Android（Capacitor）/ 浏览器三套实现
 src/components/  界面组件
 src/float/       桌面浮窗
-scripts/         构建、示例生成、端到端测试、发布说明
+scripts/         构建、示例生成、端到端测试、发布说明、安卓打包
 examples/        示例订阅
 ```
 

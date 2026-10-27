@@ -1,8 +1,8 @@
 import { useLibraryStore, type ImportFile, type ImportResult } from '../core/store';
 import { useUiStore, type MenuItem } from './uiStore';
-import type { FolderFile, PickedFolder } from '../platform/types';
+import type { ClipboardFile, FolderFile, PickedFolder } from '../platform/types';
 import { copySticker, copyStickers } from '../core/clipboard';
-import { platform } from '../platform';
+import { isMobile, platform } from '../platform';
 import { errorMessage } from '../core/subscription/sync';
 import { SUBSCRIPTIONS_ENABLED } from '../core/features';
 import { extFromBytes, extFromContentType, extFromName, fileStem, mimeFromExt } from '../core/images';
@@ -83,10 +83,31 @@ export async function copyManyWithFeedback(ids: string[]): Promise<void> {
 
 export async function shareSticker(sticker: Sticker): Promise<void> {
   try {
-    await platform.share(sticker.file, sticker.name);
+    if (await platform.share(sticker.file, sticker.name)) lib().recordUsage(sticker.id);
   } catch (e) {
     ui().toast(`分享失败：${errorMessage(e)}`, 'error');
   }
+}
+
+/** 把多个表情一起交给系统分享面板（手机） */
+export async function shareMany(ids: string[]): Promise<void> {
+  const idSet = new Set(ids);
+  const stickers = lib().stickers.filter((s) => idSet.has(s.id));
+  if (stickers.length === 0) return;
+  if (stickers.length === 1) return shareSticker(stickers[0]);
+  try {
+    if (await platform.shareMany(stickers.map((s) => s.file))) {
+      for (const s of stickers) lib().recordUsage(s.id);
+    }
+  } catch (e) {
+    ui().toast(`分享失败：${errorMessage(e)}`, 'error');
+  }
+}
+
+/** 点一下表情：桌面端复制；手机上按设置打开分享面板或复制 */
+export function primaryAction(sticker: Sticker): void {
+  if (isMobile && platform.capabilities.share && lib().settings.tapAction === 'share') void shareSticker(sticker);
+  else void copyStickerWithFeedback(sticker);
 }
 
 // ---------------------------------------------------------------- 删除 / 重命名
@@ -571,7 +592,7 @@ export function handlePasteEvent(e: ClipboardEvent): void {
   void importLoose(content, { explicit });
 }
 
-/** 点“粘贴”按钮：桌面端让主进程执行粘贴命令（和 Ctrl+V 走同一条路），浏览器里用 navigator.clipboard 读 */
+/** 点“粘贴”按钮：桌面端让主进程执行粘贴命令（和 Ctrl+V 走同一条路），安卓读原生剪贴板，浏览器里用 navigator.clipboard 读 */
 export async function pasteFromClipboard(): Promise<void> {
   const active = document.activeElement as HTMLElement | null;
   if (active && active !== document.body && typeof active.blur === 'function') active.blur();
@@ -579,6 +600,11 @@ export async function pasteFromClipboard(): Promise<void> {
     explicitPasteUntil = Date.now() + 2000;
     if (await platform.triggerPaste()) return;
     explicitPasteUntil = 0;
+    const native = await platform.readClipboard();
+    if (native) {
+      await importLoose({ files: native.files.map(toBrowserFile), html: native.html, uris: [], text: native.text }, { explicit: true });
+      return;
+    }
     const clip = navigator.clipboard as Clipboard | undefined;
     if (!clip || typeof clip.read !== 'function') throw new Error('当前浏览器不支持读取剪贴板，请直接按 Ctrl+V');
     const content: LooseContent = { files: [], html: '', uris: [], text: '' };
@@ -594,6 +620,15 @@ export async function pasteFromClipboard(): Promise<void> {
   } catch (e) {
     ui().toast(`读取剪贴板失败：${errorMessage(e)}`, 'error');
   }
+}
+
+function toBrowserFile(f: ClipboardFile): File {
+  return new File([f.bytes as unknown as BlobPart], f.name, { type: f.mime });
+}
+
+/** 其他应用“分享到本应用”的图片 / zip / 链接（安卓）：和拖入、粘贴一样处理 */
+export async function importReceived(files: ClipboardFile[], text: string): Promise<void> {
+  await importLoose({ files: files.map(toBrowserFile), html: '', uris: [], text }, { explicit: true });
 }
 
 /** 这个拖动能不能导入：系统文件，或网页上拖来的图片 / 链接（侧栏自己的分类拖拽不算） */
@@ -670,14 +705,17 @@ export function stickerMenuItems(ids: string[]): MenuItem[] {
   const caps = platform.capabilities;
   const items: MenuItem[] = [];
   if (single) {
+    // 手机上“分享”是主要用法，放最前面
+    if (caps.share && isMobile) items.push({ label: '分享 / 发送…', icon: 'share', onSelect: () => void shareSticker(single) });
     if (caps.copyImage) items.push({ label: '复制图片', icon: 'copy', onSelect: () => void copyStickerWithFeedback(single, 'image') });
     if (caps.copyFile) items.push({ label: '复制文件', icon: 'file', onSelect: () => void copyStickerWithFeedback(single, 'file') });
-    if (caps.share) items.push({ label: '分享…', icon: 'share', onSelect: () => void shareSticker(single) });
+    if (caps.share && !isMobile) items.push({ label: '分享…', icon: 'share', onSelect: () => void shareSticker(single) });
     items.push({ label: '重命名', icon: 'edit', onSelect: () => startRename(ids) });
     items.push({ label: '编辑…', icon: 'edit', onSelect: () => ui().openDialog({ kind: 'sticker', id: single.id }) });
     items.push({ label: '加文字，做成新表情…', icon: 'text', onSelect: () => openMaker({ type: 'sticker', id: single.id }) });
     if (caps.memeTemplates) items.push({ label: '用这张图套模板…', icon: 'sparkles', onSelect: () => openMemeTemplates(single.id) });
   } else {
+    if (caps.share && isMobile) items.push({ label: `分享 ${stickers.length} 个…`, icon: 'share', onSelect: () => void shareMany(ids) });
     if (caps.copyFile) items.push({ label: `复制 ${stickers.length} 个文件`, icon: 'copy', onSelect: () => void copyManyWithFeedback(ids) });
     items.push({ label: '批量命名…', icon: 'edit', onSelect: () => startRename(ids) });
   }

@@ -1,0 +1,14 @@
+{
+  "appId": "dev.lony.emojimanager",
+  "appName": "表情包管理器",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}

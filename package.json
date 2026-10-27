@@ -18,18 +18,28 @@
     "dist:win": "pnpm build && electron-builder --win",
     "dist:mac": "pnpm build && electron-builder --mac",
     "dist:dir": "pnpm build && electron-builder --dir",
+    "build:web": "vite build",
+    "android:sync": "vite build && cap sync android",
+    "android:open": "cap open android",
+    "dist:android": "node scripts/build-android.mjs",
     "samples": "node scripts/make-samples.mjs",
     "serve:samples": "node scripts/serve-samples.mjs",
     "e2e:electron": "node scripts/e2e-electron.mjs",
     "release:notes": "node scripts/release-notes.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
     "fflate": "^0.8.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
     "@memecrafters/meme-generator": "^0.2.3",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",

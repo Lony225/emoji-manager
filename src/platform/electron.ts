@@ -54,6 +54,14 @@ export function createElectronPlatform(bridge: EmojiBridge): Platform {
     async share() {
       throw new Error('桌面端不支持系统分享');
     },
+    async shareMany() {
+      throw new Error('桌面端不支持系统分享');
+    },
+    async readClipboard() {
+      return null;
+    },
+    onReceivedFiles() {},
+    onBack() {},
     revealInFolder: (rel) => bridge.revealInFolder(rel),
     openExternal: (url) => bridge.openExternal(url),
     getLibraryPath: () => bridge.getLibraryPath(),

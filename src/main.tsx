@@ -5,6 +5,7 @@ import './styles/sidebar.css';
 import './styles/grid.css';
 import './styles/overlays.css';
 import './styles/float.css';
+import './styles/mobile.css';
 import { App } from './App';
 import { FloatApp } from './float/FloatApp';
 import { platform } from './platform';
@@ -30,6 +31,7 @@ window.__runUpdateCheck = runUpdateCheck;
 // 同一份页面既是主窗口也是浮窗：由主进程启动时告诉我们是哪一个
 const Root = platform.windowRole === 'float' ? FloatApp : App;
 document.documentElement.dataset.window = platform.windowRole;
+document.documentElement.dataset.platform = platform.kind;
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

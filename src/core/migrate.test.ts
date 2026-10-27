@@ -65,6 +65,7 @@ describe('migrate', () => {
       showNames: true,
       checkUpdatesOnStart: true,
       skippedVersion: '',
+      tapAction: 'share',
     });
   });
 

@@ -55,6 +55,7 @@ function migrateSettings(raw: Record<string, unknown>): Settings {
   if (typeof raw.showNames === 'boolean') s.showNames = raw.showNames;
   if (typeof raw.checkUpdatesOnStart === 'boolean') s.checkUpdatesOnStart = raw.checkUpdatesOnStart;
   if (typeof raw.skippedVersion === 'string') s.skippedVersion = raw.skippedVersion.slice(0, 40);
+  if (raw.tapAction === 'share' || raw.tapAction === 'copy') s.tapAction = raw.tapAction;
   return s;
 }
 

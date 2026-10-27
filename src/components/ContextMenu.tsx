@@ -2,6 +2,11 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { useUiStore } from '../ui/uiStore';
 import { Icon } from '../ui/icons';
 
+/** 安全区（状态栏 / 导航栏）的像素值；桌面端为 0 */
+function inset(name: '--sat' | '--sab'): number {
+  return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
+}
+
 /** 右键菜单：自动避开窗口边缘，点外面 / Esc / 滚动即关闭 */
 export function ContextMenu() {
   const menu = useUiStore((s) => s.menu);
@@ -18,8 +23,8 @@ export function ContextMenu() {
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
     const x = Math.min(menu.x, window.innerWidth - width - 8);
-    const y = Math.min(menu.y, window.innerHeight - height - 8);
-    setPos({ x: Math.max(8, x), y: Math.max(8, y) });
+    const y = Math.min(menu.y, window.innerHeight - inset('--sab') - height - 8);
+    setPos({ x: Math.max(8, x), y: Math.max(8 + inset('--sat'), y) });
 
     const onDown = (e: MouseEvent) => {
       if (!el.contains(e.target as Node)) closeMenu();

@@ -22,6 +22,19 @@ export interface PickedFolders {
   parentName?: string;
 }
 
+/** 从系统剪贴板或其他应用的分享里拿到的一个文件 */
+export interface ClipboardFile {
+  name: string;
+  mime: string;
+  bytes: Uint8Array;
+}
+
+export interface ClipboardContent {
+  files: ClipboardFile[];
+  text: string;
+  html: string;
+}
+
 export interface FetchTextResult {
   ok: boolean;
   status: number;
@@ -189,7 +202,12 @@ export interface Platform {
   saveFile(suggestedName: string, bytes: Uint8Array): Promise<{ saved: boolean; path?: string }>;
   /** 选择一个或多个文件夹（取消返回 null）；只列出图片文件，内容按需读取 */
   pickFolders(): Promise<PickedFolders | null>;
-  share(rel: string, name: string): Promise<void>;
+  /** 系统分享面板（移动端）；返回 false 表示用户取消了 */
+  share(rel: string, name: string): Promise<boolean>;
+  /** 把多个表情一起分享（移动端）；返回 false 表示用户取消了 */
+  shareMany(rels: string[]): Promise<boolean>;
+  /** 原生读取系统剪贴板（安卓）；返回 null 表示这个平台没有原生实现，调用方改用 navigator.clipboard */
+  readClipboard(): Promise<ClipboardContent | null>;
   revealInFolder(rel: string): Promise<void>;
   openExternal(url: string): Promise<void>;
 
@@ -204,6 +222,12 @@ export interface Platform {
   // —— 协议链接：网页上的“一键导入”会打开 emojimanager://subscribe?url=… ——
   onDeepLink(cb: () => void): void;
   takePendingDeepLink(): Promise<string | null>;
+
+  // —— 移动端 ——
+  /** 其他应用“分享到本应用”的图片 / zip（安卓）；注册时会先把启动时带来的内容交出来 */
+  onReceivedFiles(cb: (files: ClipboardFile[], text: string) => void): void;
+  /** 系统返回键（安卓）：回调返回 true 表示界面自己消化了这次返回，false 则把应用退到后台 */
+  onBack(cb: () => boolean): void;
 
   // —— 使用记录（“最近使用”）——
   getUsage(): Promise<UsageMap>;

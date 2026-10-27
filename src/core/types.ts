@@ -100,7 +100,11 @@ export interface Settings {
   checkUpdatesOnStart: boolean;
   /** 用户选择“跳过这个版本”的版本号 */
   skippedVersion: string;
+  /** 手机上点一下表情做什么：打开系统分享面板，或复制到剪贴板 */
+  tapAction: TapAction;
 }
+
+export type TapAction = 'share' | 'copy';
 
 export interface Library {
   version: 1;
@@ -121,6 +125,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showNames: true,
   checkUpdatesOnStart: true,
   skippedVersion: '',
+  tapAction: 'share',
 };
 
 export function emptyLibrary(): Library {
