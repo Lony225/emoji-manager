@@ -22,7 +22,7 @@
 | Windows 10 / 11 | `Emoji.Manager-x.y.z-portable.exe` | 便携版：双击直接运行，不写注册表，删掉即卸载 |
 | macOS（Apple Silicon） | `Emoji.Manager-x.y.z-mac-arm64.dmg` | M1 / M2 / M3 / M4 |
 | macOS（Intel） | `Emoji.Manager-x.y.z-mac-x64.dmg` | |
-| Android 7.0+ | `Emoji.Manager-x.y.z-android.apk` | 手机版：点一下表情就打开系统分享面板发到微信 / QQ，长按有更多操作；相册 / 微信里「分享到」本应用即可存入 |
+| Android 7.0+ | `Emoji.Manager-x.y.z-android.apk` | 手机版：点一下表情就打开系统分享面板发到微信 / QQ，长按有更多操作；相册 / 微信里「分享到」本应用即可存入。和桌面版一样由 GitHub Actions 构建，用发布密钥签名 |
 
 安装包目前没有代码签名：
 
@@ -142,7 +142,9 @@ Android 版用 [Capacitor](https://capacitorjs.com/) 把同一套页面装进原
 git tag v1.0.1 && git push origin main v1.0.1
 ```
 
-GitHub Actions 会在 Windows 和 macOS 上构建，把安装包连同 CHANGELOG 里对应的小节发布到 Releases。已安装的用户下次启动时会收到更新提示。
+GitHub Actions 会在 Windows 和 macOS 上构建桌面安装包、在 Ubuntu 上打安卓 apk，把它们连同 CHANGELOG 里对应的小节发布到 Releases。已安装的用户下次启动时会收到更新提示。
+
+安卓 apk 用仓库 secrets 里的发布密钥签名（Settings → Secrets and variables → Actions），四个都要配：`ANDROID_KEYSTORE_BASE64`（jks 文件的 base64，Git Bash / Linux 下 `base64 -w0 android-release.jks` 的输出）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。没配齐时，推送到 main 只是跳过安卓任务并给出警告，打 `v*` 标签则直接失败，不会发出调试签名的包；打完包 CI 还会用 apksigner 核对签名证书和密钥一致才上传。密钥丢了就不能覆盖安装升级，务必另行备份。
 
 ## 项目结构
 

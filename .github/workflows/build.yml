@@ -43,9 +43,125 @@ jobs:
             release/*.zip
           if-no-files-found: error
 
+  # 安卓包必须用正式的发布密钥签名（调试签名的包不能和正式包互相覆盖安装），密钥放在仓库 secrets 里：
+  #   ANDROID_KEYSTORE_BASE64（jks 文件的 base64）、ANDROID_KEYSTORE_PASSWORD、ANDROID_KEY_ALIAS、ANDROID_KEY_PASSWORD
+  # 没配齐时：打 v* 标签直接失败（宁可不发，也不发调试签名的 apk）；普通推送 / PR 跳过安卓任务并给出警告。
+  # 作业级 if 读不到 secrets，所以先用这个小任务把「密钥配齐了没有」变成输出。
+  android-key:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - name: 检查签名密钥 secrets
+        id: check
+        shell: bash
+        env:
+          HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          HAS_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          HAS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          HAS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
+          IS_RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          missing=()
+          [[ "$HAS_KEYSTORE" == true ]] || missing+=(ANDROID_KEYSTORE_BASE64)
+          [[ "$HAS_STORE_PASSWORD" == true ]] || missing+=(ANDROID_KEYSTORE_PASSWORD)
+          [[ "$HAS_ALIAS" == true ]] || missing+=(ANDROID_KEY_ALIAS)
+          [[ "$HAS_KEY_PASSWORD" == true ]] || missing+=(ANDROID_KEY_PASSWORD)
+          if [[ ${#missing[@]} -eq 0 ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$IS_RELEASE_TAG" == true ]]; then
+            echo "::error::缺少安卓签名 secrets：${missing[*]}。发版的 apk 必须用正式密钥签名：在仓库 Settings → Secrets and variables → Actions 里配好这四个 secrets，然后在 Actions 页面对这次运行点「Re-run failed jobs」即可，不用重新打标签。"
+            exit 1
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::缺少安卓签名 secrets：${missing[*]}，这次跳过安卓打包（打 v* 标签时会直接失败）。"
+          fi
+
+  android:
+    needs: android-key
+    if: needs.android-key.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # scripts/build-android.mjs 要 JDK 21 以上，会用 JAVA_HOME；Gradle 的依赖和 wrapper 发行版交给 setup-java 缓存
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+          cache-dependency-path: |
+            android/**/*.gradle*
+            android/gradle/wrapper/gradle-wrapper.properties
+      # 装 SDK 命令行工具、接受许可、导出 ANDROID_HOME；缺的平台 / build-tools 由 Gradle 自动下载
+      - uses: android-actions/setup-android@v4
+        with:
+          log-accepted-android-sdk-licenses: false
+      - run: pnpm install --frozen-lockfile
+      - name: 从 secrets 还原签名密钥
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          dir="$RUNNER_TEMP/android-signing"
+          mkdir -p "$dir"
+          # base64 不管是一行还是带换行粘进去的都行
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$dir/release.jks"
+          # properties 文件里反斜杠是转义符，密码里有的话要写成两个
+          esc() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
+          {
+            echo "storeFile=$dir/release.jks"
+            echo "storePassword=$(esc "$KEYSTORE_PASSWORD")"
+            echo "keyAlias=$(esc "$KEY_ALIAS")"
+            echo "keyPassword=$(esc "$KEY_PASSWORD")"
+          } > "$dir/keystore.properties"
+          # 先确认密钥库打得开、别名存在；顺手记下证书指纹，打完包核对签名用
+          cert_sha256=$(keytool -exportcert -keystore "$dir/release.jks" -alias "$KEY_ALIAS" -storepass:env KEYSTORE_PASSWORD | sha256sum | cut -d' ' -f1)
+          {
+            echo "EMOJI_ANDROID_KEYSTORE_PROPERTIES=$dir/keystore.properties"
+            echo "RELEASE_CERT_SHA256=$cert_sha256"
+          } >> "$GITHUB_ENV"
+          echo "发布密钥证书 SHA-256：$cert_sha256"
+      - name: 打 apk
+        # gradlew 从 Windows 提交时可能丢掉可执行位，保险起见补上
+        run: |
+          chmod +x android/gradlew
+          pnpm dist:android
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+      # build.gradle 找不到 keystore.properties 时会悄悄退回调试签名，这里用 apksigner 核对一遍，签错了就不上传
+      - name: 核对 apk 是用发布密钥签名的
+        run: |
+          apksigner=$(printf '%s\n' "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
+          for apk in release/*.apk; do
+            actual=$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            echo "$apk：$actual"
+            if [[ "$actual" != "$RELEASE_CERT_SHA256" ]]; then
+              echo "::error::$apk 的签名证书（$actual）和发布密钥（$RELEASE_CERT_SHA256）不一致，不能发布。"
+              exit 1
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: release/*.apk
+          if-no-files-found: error
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -64,3 +180,4 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.dmg
             artifacts/**/*.zip
+            artifacts/**/*.apk
