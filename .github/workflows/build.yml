@@ -141,15 +141,17 @@ jobs:
           pnpm dist:android
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
-      # build.gradle 找不到 keystore.properties 时会悄悄退回调试签名，这里用 apksigner 核对一遍，签错了就不上传
+      # build.gradle 找不到 keystore.properties 时会悄悄退回调试签名，这里用 apksigner 核对一遍，签错了就不上传。
+      # 不同版本的 apksigner 对签名者的叫法不一样（36.x 是「Signer #1」，37.0 起是「V2 Signer:」），
+      # 所以只认「certificate SHA-256 digest:」后面的十六进制；一个证书都没读到也算失败
       - name: 核对 apk 是用发布密钥签名的
         run: |
           apksigner=$(printf '%s\n' "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
           for apk in release/*.apk; do
-            actual=$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-            echo "$apk：$actual"
-            if [[ "$actual" != "$RELEASE_CERT_SHA256" ]]; then
-              echo "::error::$apk 的签名证书（$actual）和发布密钥（$RELEASE_CERT_SHA256）不一致，不能发布。"
+            certs=$("$apksigner" verify --print-certs "$apk" | sed -n '/Source Stamp/d; s/.*certificate SHA-256 digest: *\([0-9a-f]*\).*/\1/p' | sort -u | paste -sd ' ')
+            echo "$apk：${certs:-（没读到签名证书）}"
+            if [[ "$certs" != "$RELEASE_CERT_SHA256" ]]; then
+              echo "::error::$apk 的签名证书（${certs:-没读到}）和发布密钥（$RELEASE_CERT_SHA256）不一致，不能发布。"
               exit 1
             fi
           done
