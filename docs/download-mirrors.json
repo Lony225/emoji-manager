@@ -1,0 +1,12 @@
+{
+  "_comment": "应用检查更新 / 下载安装包时用的公共 GitHub 加速站名单（把 GitHub 地址整个接在前缀后面）。应用经 jsDelivr 读取这个文件，站点挂了在这里改掉即可，不用发版。只收 https:// 开头、/ 结尾的前缀，最多 12 个。",
+  "checkedAt": "2026-10-28",
+  "accelerators": [
+    "https://ghfast.top/",
+    "https://gh-proxy.com/",
+    "https://ghproxy.net/",
+    "https://gh.llkk.cc/",
+    "https://gh.nxnow.top/",
+    "https://ghfile.geekertao.top/"
+  ]
+}

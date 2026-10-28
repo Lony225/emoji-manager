@@ -563,9 +563,20 @@ async function main() {
     const notesDom = await cdp.eval("(() => { const n = document.querySelector('.dialog .notes'); return n ? { h2: n.querySelector('h2')?.textContent, items: n.querySelectorAll(':scope > ul > li').length, bold: n.querySelector('li strong')?.textContent, code: n.querySelector('code')?.textContent, sub: n.querySelector('li ul li')?.textContent, link: n.querySelector('a')?.getAttribute('href'), pre: !!n.closest('pre') } : null; })()");
     check('更新说明按 Markdown 结构渲染（标题 / 列表 / 加粗 / 代码 / 子列表 / 链接）', !!notesDom && notesDom.h2 === '新增' && notesDom.items === 2 && notesDom.bold === '测试条目' && notesDom.code === 'Ctrl+V' && notesDom.sub === '子项' && notesDom.link === 'https://example.com/doc' && !notesDom.pre, JSON.stringify(notesDom));
     check('按系统挑出了 Windows 安装包', /a\\.exe|1\\.0 KB|1024/.test(await cdp.eval("document.querySelector('.dialog .meta')?.textContent")) || (await cdp.eval("document.querySelector('.dialog .btn.primary')?.textContent")).includes('下载'));
+    // 备用下载地址：GitHub 直连 + 公共加速站（名单经 jsDelivr 拉取，拉不到用内置的；最多等名单请求超时）
+    const mirrorsDom = await cdp.waitFor("(() => { const a = Array.from(document.querySelectorAll('.dialog .mirrors a')); return a.length >= 2 ? JSON.stringify({ n: a.length, first: a[0].textContent.trim(), href: a[1].getAttribute('href') }) : 0; })()", 20000, '备用下载地址').catch(() => '');
+    const md = mirrorsDom ? JSON.parse(mirrorsDom) : null;
+    check('列出 GitHub 直连和公共加速站的备用下载地址', !!md && md.first.startsWith('GitHub') && /^https:\/\/[^/]+\/https:\/\/example\.com\/a\.exe$/.test(md.href), mirrorsDom);
+    assertEq('GitHub 能连上时主按钮直接下载', await cdp.eval("document.querySelector('.dialog .btn.primary')?.textContent.trim()"), '下载');
     await cdp.eval("Array.from(document.querySelectorAll('.dialog footer button')).find(b => b.textContent.includes('跳过')).click()");
     assertEq('跳过这个版本被记住', await cdp.eval('window.__emojiStore.getState().settings.skippedVersion'), '9.9.9');
     await cdp.eval("window.__emojiStore.getState().updateSettings({ skippedVersion: '' })");
+    // 版本信息是经镜像拿到的（GitHub 连不上）：弹窗里说明来源，下载地址一栏提示优先用加速站
+    await cdp.eval(`window.__uiStore.getState().openDialog({ kind: 'update', current: '1.0.0', release: { version: '9.9.8', tag: 'v9.9.8', name: '测试', notes: '', url: 'https://example.com/rel', source: 'mirror', via: 'gh-proxy.com', assets: [{ name: 'Emoji Manager-9.9.8-win-x64.exe', url: 'https://example.com/b.exe', size: 0 }] } })`);
+    await cdp.waitFor("document.querySelector('.dialog h3')?.textContent.includes('9.9.8') ? 1 : 0", 3000, '镜像来源的更新对话框');
+    check('版本信息来自镜像时弹窗里注明来源', /版本信息来自 gh-proxy\.com/.test(await cdp.eval("document.querySelector('.dialog .meta')?.textContent ?? ''")));
+    check('大小未知时不显示 0 B', !/0 B/.test(await cdp.eval("document.querySelector('.dialog .meta')?.textContent ?? ''")));
+    await cdp.eval('window.__uiStore.getState().closeDialog()');
 
     // ---- 协议链接：第二个实例带着 emojimanager://subscribe?url=… 启动 → 第一个实例弹出确认
     console.log('\n协议链接');

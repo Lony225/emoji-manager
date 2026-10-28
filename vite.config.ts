@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
   version: string;
+  productName?: string;
   repository?: { url?: string };
 };
 // GitHub 仓库 owner/name，用于检查更新与“主页”链接
@@ -15,6 +16,7 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __GITHUB_REPO__: JSON.stringify(repo),
+    __PRODUCT_NAME__: JSON.stringify(pkg.productName ?? 'Emoji Manager'),
   },
   build: {
     outDir: 'dist',

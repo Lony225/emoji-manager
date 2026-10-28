@@ -672,6 +672,50 @@ kbd {
   margin: 8px 0;
 }
 
+/* 更新弹窗：备用下载地址（GitHub 直连 + 公共加速站） */
+.dialog .mirrors {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dialog .mirrors .label {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.dialog .mirrors .links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dialog .mirrors a.chip {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.dialog .mirrors a.chip.ok {
+  box-shadow: inset 0 0 0 1px var(--success);
+}
+
+.dialog .mirrors a.chip.ok .state {
+  color: var(--success);
+}
+
+.dialog .mirrors a.chip.bad {
+  opacity: 0.55;
+}
+
+.dialog .mirrors a.chip.bad .state {
+  color: var(--danger);
+}
+
+.dialog .mirrors .state {
+  font-size: 11px;
+  font-weight: 700;
+}
+
 /* 批量改名 */
 .rename-form .field.grow {
   flex: 1;
