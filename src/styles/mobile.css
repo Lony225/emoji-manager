@@ -153,6 +153,24 @@
 
 /* 手机：对话框从底部弹出、占满宽度，网格更紧凑 */
 @media (max-width: 600px) {
+  .lan-self {
+    flex-wrap: wrap;
+  }
+
+  .lan-self .hint {
+    flex-basis: 100%;
+    text-align: left;
+    margin-left: 0;
+  }
+
+  .lan-item {
+    flex-wrap: wrap;
+  }
+
+  .lan-item .actions {
+    margin-left: 44px;
+  }
+
   .backdrop {
     padding: calc(24px + var(--sat)) 0 0;
     place-items: end center;

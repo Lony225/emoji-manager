@@ -66,7 +66,25 @@ describe('migrate', () => {
       checkUpdatesOnStart: true,
       skippedVersion: '',
       tapAction: 'share',
+      lanSync: false,
+      lanAutoSync: true,
     });
+    expect(lib.deleted).toEqual([]);
+  });
+
+  it('删除记录：丢掉格式不对和太旧的，同一条目只留最新', () => {
+    const now = Date.now();
+    const lib = migrate({
+      deleted: [
+        { kind: 'sticker', id: 'a', at: now - 1000 },
+        { kind: 'sticker', id: 'a', at: now - 5000 },
+        { kind: 'category', id: 'c', at: now - 400 * 24 * 3600 * 1000 },
+        { kind: 'nope', id: 'x', at: now },
+        { kind: 'sticker', id: '', at: now },
+        'junk',
+      ],
+    });
+    expect(lib.deleted).toEqual([{ kind: 'sticker', id: 'a', at: now - 1000 }]);
   });
 
   it('分类可以任意多级；父不存在、指向自己或成环的升为一级', () => {

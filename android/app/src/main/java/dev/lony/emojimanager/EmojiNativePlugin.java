@@ -27,8 +27,14 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * 应用自己的一点原生能力（Capacitor 官方插件没有的部分）：
@@ -37,6 +43,7 @@ import org.json.JSONException;
  * - 接收其他应用“分享”过来的图片 / zip（相册、微信里的“分享到…”）
  * - emojimanager:// 协议链接
  * - 用系统浏览器打开链接
+ * - 局域网同步的网络部分（LanSyncService：UDP 发现 + 内置 HTTP 服务 + 客户端）
  */
 @CapacitorPlugin(name = "EmojiNative")
 public class EmojiNativePlugin extends Plugin {
@@ -49,6 +56,10 @@ public class EmojiNativePlugin extends Plugin {
     private final List<Uri> pendingShare = new ArrayList<>();
     private String pendingShareText = null;
     private String pendingDeepLink = null;
+
+    /** 局域网同步；网络操作都放到自己的线程池里，不占 Capacitor 的插件线程 */
+    private LanSyncService lan;
+    private final ExecutorService lanPool = Executors.newCachedThreadPool();
 
     // ---------------------------------------------------------------- 接收分享 / 协议链接
 
@@ -260,6 +271,194 @@ public class EmojiNativePlugin extends Plugin {
         } catch (ActivityNotFoundException e) {
             call.reject("没有可以打开这个链接的应用");
         }
+    }
+
+    // ---------------------------------------------------------------- 局域网同步
+
+    private synchronized LanSyncService lanService() {
+        if (lan == null) {
+            String version = "";
+            try {
+                version = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0).versionName;
+            } catch (Exception ignored) {
+                /* 没有版本号也无妨 */
+            }
+            lan = new LanSyncService(
+                getContext(),
+                new LanSyncService.Host() {
+                    @Override
+                    public void onDevices(JSONArray devices) {
+                        JSObject data = new JSObject();
+                        try {
+                            data.put("devices", new JSArray(devices.toString()));
+                        } catch (JSONException e) {
+                            data.put("devices", new JSArray());
+                        }
+                        notifyListeners("lanDevices", data);
+                    }
+
+                    @Override
+                    public boolean dispatch(String reqId, String kind, String from, String body) {
+                        if (getBridge() == null || !hasListeners("lanRequest")) return false;
+                        JSObject data = new JSObject();
+                        data.put("reqId", reqId);
+                        data.put("kind", kind);
+                        if (from != null) data.put("from", from);
+                        data.put("body", body);
+                        notifyListeners("lanRequest", data);
+                        return true;
+                    }
+                },
+                version
+            );
+        }
+        return lan;
+    }
+
+    private static Map<String, String> tokensOf(JSObject config) {
+        Map<String, String> out = new HashMap<>();
+        JSONArray arr = config.optJSONArray("tokens");
+        if (arr == null) return out;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject t = arr.optJSONObject(i);
+            if (t == null) continue;
+            String deviceId = t.optString("deviceId", "");
+            String token = t.optString("token", "");
+            if (!deviceId.isEmpty() && !token.isEmpty()) out.put(deviceId, token);
+        }
+        return out;
+    }
+
+    @PluginMethod
+    public void lanStart(PluginCall call) {
+        JSObject config = call.getObject("config");
+        String libraryDir = call.getString("libraryDir");
+        if (config == null || libraryDir == null) {
+            call.reject("缺少配置");
+            return;
+        }
+        lanPool.execute(() -> {
+            try {
+                int port = lanService().start(config.optString("id", ""), config.optString("name", ""), tokensOf(config), new File(libraryDir));
+                JSObject ret = new JSObject();
+                ret.put("port", port);
+                call.resolve(ret);
+            } catch (Exception e) {
+                call.reject("无法启动局域网同步：" + e.getMessage(), e);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void lanStop(PluginCall call) {
+        lanPool.execute(() -> {
+            if (lan != null) lan.stop();
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void lanConfigure(PluginCall call) {
+        JSObject config = call.getObject("config");
+        if (config == null) {
+            call.reject("缺少配置");
+            return;
+        }
+        lanService().configure(config.optString("id", ""), config.optString("name", ""), tokensOf(config));
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void lanDefaultName(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("name", LanSyncService.defaultName());
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void lanRespond(PluginCall call) {
+        String reqId = call.getString("reqId");
+        Integer status = call.getInt("status");
+        String body = call.getString("body", "null");
+        if (reqId != null && status != null && lan != null) lan.respond(reqId, status, body);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void lanRequest(PluginCall call) {
+        String host = call.getString("host");
+        Integer port = call.getInt("port");
+        String path = call.getString("path");
+        if (host == null || port == null || path == null || !path.matches("^/[a-z]+$")) {
+            call.reject("无效的请求");
+            return;
+        }
+        String token = call.getString("token", "");
+        String body = call.getString("body", "null");
+        int timeoutMs = Math.max(1000, Math.min(300_000, call.getInt("timeoutMs", 30_000)));
+        lanPool.execute(() -> {
+            try {
+                LanSyncService.Response r = lanService().request(host, port, token, path, body, timeoutMs);
+                JSObject ret = new JSObject();
+                ret.put("status", r.status);
+                ret.put("body", r.body);
+                call.resolve(ret);
+            } catch (Exception e) {
+                call.reject(LanSyncService.describe(e), e);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void lanUpload(PluginCall call) {
+        String host = call.getString("host");
+        Integer port = call.getInt("port");
+        String path = call.getString("path");
+        String file = call.getString("file");
+        if (host == null || port == null || path == null || file == null || !path.matches("^/file/[^/]+$")) {
+            call.reject("无效的请求");
+            return;
+        }
+        String token = call.getString("token", "");
+        lanPool.execute(() -> {
+            try {
+                int status = lanService().upload(host, port, token, path, toFile(file));
+                JSObject ret = new JSObject();
+                ret.put("status", status);
+                call.resolve(ret);
+            } catch (Exception e) {
+                call.reject(LanSyncService.describe(e), e);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void lanDownload(PluginCall call) {
+        String host = call.getString("host");
+        Integer port = call.getInt("port");
+        String path = call.getString("path");
+        String file = call.getString("file");
+        if (host == null || port == null || path == null || file == null || !path.matches("^/file/[^/]+$")) {
+            call.reject("无效的请求");
+            return;
+        }
+        String token = call.getString("token", "");
+        lanPool.execute(() -> {
+            try {
+                int status = lanService().download(host, port, token, path, toFile(file));
+                JSObject ret = new JSObject();
+                ret.put("status", status);
+                call.resolve(ret);
+            } catch (Exception e) {
+                call.reject(LanSyncService.describe(e), e);
+            }
+        });
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (lan != null) lan.stop();
+        lanPool.shutdownNow();
     }
 
     // ---------------------------------------------------------------- 工具

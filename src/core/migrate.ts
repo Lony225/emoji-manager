@@ -8,7 +8,12 @@ import {
   type Sticker,
   type StickerSource,
   type Subscription,
+  type Tombstone,
 } from './types';
+
+/** 删除记录保留多久：超过这个时间的设备早该同步过了，再留着只会让资料文件变大 */
+export const TOMBSTONE_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000;
+const TOMBSTONE_MAX_COUNT = 20000;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -56,7 +61,29 @@ function migrateSettings(raw: Record<string, unknown>): Settings {
   if (typeof raw.checkUpdatesOnStart === 'boolean') s.checkUpdatesOnStart = raw.checkUpdatesOnStart;
   if (typeof raw.skippedVersion === 'string') s.skippedVersion = raw.skippedVersion.slice(0, 40);
   if (raw.tapAction === 'share' || raw.tapAction === 'copy') s.tapAction = raw.tapAction;
+  if (typeof raw.lanSync === 'boolean') s.lanSync = raw.lanSync;
+  if (typeof raw.lanAutoSync === 'boolean') s.lanAutoSync = raw.lanAutoSync;
   return s;
+}
+
+/** 整理删除记录：去掉格式不对的、太旧的，同一个条目只留最新一条，数量封顶 */
+export function pruneTombstones(raw: unknown, now = Date.now()): Tombstone[] {
+  if (!Array.isArray(raw)) return [];
+  const byKey = new Map<string, Tombstone>();
+  for (const t of raw) {
+    if (!isRecord(t) || typeof t.id !== 'string' || !t.id || (t.kind !== 'sticker' && t.kind !== 'category')) continue;
+    const at = num(t.at, 0);
+    if (at <= 0 || now - at > TOMBSTONE_MAX_AGE_MS) continue;
+    const key = `${t.kind}:${t.id}`;
+    const prev = byKey.get(key);
+    if (!prev || prev.at < at) byKey.set(key, { kind: t.kind, id: t.id, at });
+  }
+  const list = Array.from(byKey.values());
+  if (list.length > TOMBSTONE_MAX_COUNT) {
+    list.sort((a, b) => b.at - a.at);
+    list.length = TOMBSTONE_MAX_COUNT;
+  }
+  return list;
 }
 
 /**
@@ -100,10 +127,12 @@ export function migrate(raw: unknown): Library {
       .map((c, i): Category => {
         const subscriptionId = optStr(c.subscriptionId);
         const linked = subscriptionId !== undefined && subIds.has(subscriptionId);
+        const createdAt = num(c.createdAt, now);
         return {
           id: c.id as string,
           name: c.name as string,
-          createdAt: num(c.createdAt, now),
+          createdAt,
+          updatedAt: num(c.updatedAt, createdAt),
           order: num(c.order, i),
           parentId: optStr(c.parentId),
           subscriptionId: linked ? subscriptionId : undefined,
@@ -160,5 +189,6 @@ export function migrate(raw: unknown): Library {
   }
 
   if (isRecord(raw.settings)) lib.settings = migrateSettings(raw.settings);
+  lib.deleted = pruneTombstones(raw.deleted, now);
   return lib;
 }

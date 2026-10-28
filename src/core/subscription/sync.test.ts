@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps } from '../ops';
-import type { Category, Sticker, Subscription } from '../types';
+import type { Category, Sticker, Subscription, Tombstone } from '../types';
 import { syncSubscription, type SyncDeps } from './sync';
 
 /** 内存里的假平台：routes 表示远端文件，files 表示本地数据目录 */
@@ -40,6 +40,7 @@ interface World {
   categories: Category[];
   stickers: Sticker[];
   subscriptions: Subscription[];
+  deleted: Tombstone[];
 }
 
 function makeSub(url: string, extra: Partial<Subscription> = {}): Subscription {
@@ -48,7 +49,7 @@ function makeSub(url: string, extra: Partial<Subscription> = {}): Subscription {
 
 function harness(routes: Record<string, string | Uint8Array>, world?: Partial<World>) {
   const fp = fakePlatform(routes);
-  let state: World = { categories: [], stickers: [], subscriptions: [makeSub(MANIFEST)], ...world };
+  let state: World = { categories: [], stickers: [], subscriptions: [makeSub(MANIFEST)], deleted: [], ...world };
   let seq = 0;
   let clock = 1000;
   const deps: SyncDeps = {

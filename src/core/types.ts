@@ -44,6 +44,8 @@ export interface Category {
   id: string;
   name: string;
   createdAt: number;
+  /** 最近一次改名 / 移动 / 排序的时间；旧资料里没有这个字段时按 createdAt 算（局域网同步按它判断哪边更新） */
+  updatedAt?: number;
   order: number;
   /** 父分类；一级分类没有这个字段。可以像文件夹一样任意多级 */
   parentId?: string;
@@ -102,9 +104,23 @@ export interface Settings {
   skippedVersion: string;
   /** 手机上点一下表情做什么：打开系统分享面板，或复制到剪贴板 */
   tapAction: TapAction;
+  /** 局域网同步：在同一网络里发现其他装了本应用的设备，配对后双向同步表情 */
+  lanSync: boolean;
+  /** 发现已配对的设备在线、或本机资料有改动时自动同步 */
+  lanAutoSync: boolean;
 }
 
 export type TapAction = 'share' | 'copy';
+
+/**
+ * 删除记录（墓碑）：表情或分类被删掉后留下 id 和时间，
+ * 局域网同步时另一台设备据此知道“这是被删了，不是它那边新加的”。
+ */
+export interface Tombstone {
+  kind: 'sticker' | 'category';
+  id: string;
+  at: number;
+}
 
 export interface Library {
   version: 1;
@@ -112,6 +128,8 @@ export interface Library {
   stickers: Sticker[];
   subscriptions: Subscription[];
   settings: Settings;
+  /** 删除记录，同步用；超过一定时间会清理 */
+  deleted: Tombstone[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -126,6 +144,8 @@ export const DEFAULT_SETTINGS: Settings = {
   checkUpdatesOnStart: true,
   skippedVersion: '',
   tapAction: 'share',
+  lanSync: false,
+  lanAutoSync: true,
 };
 
 export function emptyLibrary(): Library {
@@ -135,5 +155,6 @@ export function emptyLibrary(): Library {
     stickers: [],
     subscriptions: [],
     settings: { ...DEFAULT_SETTINGS },
+    deleted: [],
   };
 }

@@ -48,6 +48,7 @@
 | 托盘 | 关闭主窗口最小化到托盘，快捷键照常可用；安装版可设开机自启 |
 | 订阅（暂未开放） | 输入 JSON 清单地址即同步；增量更新、保留你改过的名字 / 标签 / 分类、启动时自动同步。当前版本先隐藏了入口，之后开放 |
 | 分享 | 任意选中的表情、整个分类（含所有子分类）或全部，导出成 zip（含名称、标签、多级分类），对方导入即还原 |
+| 局域网同步 | 电脑和手机连在同一个 Wi-Fi 里就能互相同步表情库，不用填地址、不用服务器：设置里打开后自动发现装了本应用的设备，配对一次（对方屏幕上确认配对码），之后增量同步——新加的、改名的、打标签的、移动分类的、删除的都会传到另一边，两边各自的改动都保留，相同的图片自动合并；已配对设备上线或本机有改动时自动同步 |
 | 数据 | `library.json` + `stickers/` 目录，可改到同步盘目录在多台电脑间共用；自动保留上一版备份 |
 
 <p align="center">
@@ -95,6 +96,7 @@
 - 目录内：`library.json`（资料）、`library.json.bak`（上一版备份）、`stickers/`（图片）、`usage.json`（最近使用记录）
 - 模板表情的字体、素材和预览缓存在上一级的 `meme-generator/` 目录（不随数据目录迁移，删掉会重新下载）
 - 可在「设置 → 数据目录 → 更改」换到任意目录（会把现有数据复制过去）
+- 局域网同步用 UDP 28617 端口发现设备、HTTP 28618 端口（被占用时随机）传输；Windows 防火墙第一次询问时请允许本应用访问专用网络。配对信息存在应用本身（不在数据目录里），换数据目录不影响
 
 退出程序：右键托盘图标选「退出」，或在设置里关掉「关闭主窗口时最小化到托盘」后直接关窗口。
 
@@ -115,7 +117,7 @@ pnpm serve:samples    # 本地示例订阅源：http://127.0.0.1:8787/pack.json
 ```bash
 pnpm typecheck
 pnpm test             # 单元测试
-pnpm e2e:electron     # 启动真实 Electron 跑完整流程（导入、订阅、浮窗、拖拽、导出导入、重启）
+pnpm e2e:electron     # 启动真实 Electron 跑完整流程（导入、订阅、浮窗、拖拽、导出导入、重启、两个实例局域网同步）
 ```
 
 打包：
@@ -149,9 +151,9 @@ GitHub Actions 会在 Windows 和 macOS 上构建桌面安装包、在 Ubuntu �
 ## 项目结构
 
 ```
-electron/        主进程、preload（文件、下载、剪贴板、自定义协议、托盘、浮窗、快捷键）；memes.ts / meme-worker.ts 是模板表情引擎
-android/         Android 壳（Capacitor）；app/src/main/java 里的 EmojiNativePlugin 负责剪贴板、接收分享、协议链接
-src/core/        与界面无关的核心：数据模型、订阅清单解析、同步算法、导出导入、store
+electron/        主进程、preload（文件、下载、剪贴板、自定义协议、托盘、浮窗、快捷键）；memes.ts / meme-worker.ts 是模板表情引擎；lan.ts 是局域网同步的发现与 HTTP 服务
+android/         Android 壳（Capacitor）；app/src/main/java 里的 EmojiNativePlugin 负责剪贴板、接收分享、协议链接，LanSyncService 是局域网同步的原生部分
+src/core/        与界面无关的核心：数据模型、订阅清单解析、同步算法、导出导入、store；lan/ 是局域网同步的协议与合并算法
 src/platform/    平台接口 + Electron / Android（Capacitor）/ 浏览器三套实现
 src/components/  界面组件
 src/float/       桌面浮窗

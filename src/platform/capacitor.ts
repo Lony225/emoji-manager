@@ -2,7 +2,7 @@ import { App } from '@capacitor/app';
 import { Capacitor, CapacitorHttp, SystemBars, SystemBarsStyle, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import type { ClipboardFile, Platform, UsageMap } from './types';
+import type { ClipboardFile, LanConfig, LanDevice, LanIncoming, LanJsonResponse, LanTarget, Platform, UsageMap } from './types';
 
 /** 随应用打包的原生插件：android/app/src/main/java/dev/lony/emojimanager/EmojiNativePlugin.java */
 interface NativeFile {
@@ -22,6 +22,19 @@ interface EmojiNativePlugin {
   /** 窗口底色（#rrggbb）：旧版 WebView 不会铺到状态栏 / 导航栏下面，露出来的是它 */
   setBackground(o: { color: string }): Promise<void>;
   addListener(event: 'received' | 'deepLink', cb: () => void): Promise<PluginListenerHandle>;
+
+  // —— 局域网同步（UDP 发现 + 内置 HTTP 服务，见 LanSyncService.java）——
+  lanStart(o: { config: LanConfig; libraryDir: string }): Promise<{ port: number }>;
+  lanStop(): Promise<void>;
+  lanConfigure(o: { config: LanConfig }): Promise<void>;
+  lanDefaultName(): Promise<{ name: string }>;
+  /** 页面处理完原生层转来的请求后把结果交回去 */
+  lanRespond(o: { reqId: string; status: number; body: string }): Promise<void>;
+  lanRequest(o: { host: string; port: number; token: string; path: string; body: string; timeoutMs: number }): Promise<{ status: number; body: string }>;
+  lanUpload(o: { host: string; port: number; token: string; path: string; file: string }): Promise<{ status: number }>;
+  lanDownload(o: { host: string; port: number; token: string; path: string; file: string }): Promise<{ status: number }>;
+  addListener(event: 'lanDevices', cb: (e: { devices: LanDevice[] }) => void): Promise<PluginListenerHandle>;
+  addListener(event: 'lanRequest', cb: (e: { reqId: string; kind: LanIncoming['kind']; from?: string; body: string }) => void): Promise<PluginListenerHandle>;
 }
 
 const Native = registerPlugin<EmojiNativePlugin>('EmojiNative');
@@ -179,6 +192,7 @@ export function createCapacitorPlatform(): Platform {
       desktop: false,
       multiFolderPick: false,
       memeTemplates: false,
+      lanSync: true,
     },
     init,
 
@@ -350,6 +364,56 @@ export function createCapacitorPlatform(): Platform {
     },
     onMemeProgress() {
       return () => undefined;
+    },
+
+    async lanStart(config) {
+      await init();
+      return Native.lanStart({ config, libraryDir: decodeURIComponent(baseUri.replace(/^file:\/\//, '')) });
+    },
+    lanStop: () => Native.lanStop(),
+    lanConfigure: (config) => Native.lanConfigure({ config }),
+    lanDefaultName: async () => (await Native.lanDefaultName()).name,
+    onLanDevices(cb) {
+      void Native.addListener('lanDevices', (e) => cb(e.devices ?? []));
+    },
+    onLanRequest(cb) {
+      void Native.addListener('lanRequest', (e) => {
+        void (async () => {
+          let res: LanJsonResponse;
+          try {
+            let body: unknown = null;
+            try {
+              body = e.body ? JSON.parse(e.body) : null;
+            } catch {
+              res = { status: 400, body: { error: '不是有效的 JSON' } };
+              await Native.lanRespond({ reqId: e.reqId, status: res.status, body: JSON.stringify(res.body) });
+              return;
+            }
+            res = await cb({ kind: e.kind, from: e.from, body });
+          } catch (err) {
+            res = { status: 500, body: { error: err instanceof Error ? err.message : String(err) } };
+          }
+          await Native.lanRespond({ reqId: e.reqId, status: res.status, body: JSON.stringify(res.body ?? null) });
+        })();
+      });
+    },
+    async lanRequest(target: LanTarget, token, path, body, timeoutMs) {
+      const r = await Native.lanRequest({ host: target.host, port: target.port, token, path, body: JSON.stringify(body ?? null), timeoutMs });
+      let parsed: unknown = null;
+      try {
+        parsed = r.body ? JSON.parse(r.body) : null;
+      } catch {
+        parsed = { error: '对方返回的不是 JSON' };
+      }
+      return { status: r.status, body: parsed };
+    },
+    async lanUpload(target, token, path, r) {
+      await init();
+      return (await Native.lanUpload({ host: target.host, port: target.port, token, path, file: abs(r) })).status;
+    },
+    async lanDownload(target, token, path, r) {
+      await init();
+      return (await Native.lanDownload({ host: target.host, port: target.port, token, path, file: abs(r) })).status;
     },
 
     onReceivedFiles(cb) {

@@ -109,6 +109,7 @@ export function createWebPlatform(): Platform {
       desktop: false,
       multiFolderPick: false,
       memeTemplates: false,
+      lanSync: false,
     },
     async init() {
       db = await openDb();
@@ -338,6 +339,25 @@ export function createWebPlatform(): Platform {
     },
     onMemeProgress() {
       return () => undefined;
+    },
+    async lanStart() {
+      throw new Error('浏览器版不支持局域网同步');
+    },
+    async lanStop() {},
+    async lanConfigure() {},
+    async lanDefaultName() {
+      return '浏览器';
+    },
+    onLanDevices() {},
+    onLanRequest() {},
+    async lanRequest() {
+      throw new Error('浏览器版不支持局域网同步');
+    },
+    async lanUpload() {
+      throw new Error('浏览器版不支持局域网同步');
+    },
+    async lanDownload() {
+      throw new Error('浏览器版不支持局域网同步');
     },
     onDeepLink() {},
     async takePendingDeepLink() {

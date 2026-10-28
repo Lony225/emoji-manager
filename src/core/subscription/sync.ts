@@ -180,18 +180,20 @@ export async function syncSubscription(
       if (next.remoteName === next.name && next.name !== name) next = { ...next, name, remoteName: name };
       else if (next.remoteName !== name) next = { ...next, remoteName: name };
       if (forceParent && (next.parentId ?? undefined) !== parentId) next = { ...next, parentId };
-      if (next !== cat) catOps.push({ op: 'upsertCategory', category: next });
+      if (next !== cat) catOps.push({ op: 'upsertCategory', category: { ...next, updatedAt: now() } });
       cat = next;
     } else {
       const adopt = snap.categories.find((c) => !c.subscriptionId && c.name === name && !usedCats.has(c.id));
       if (adopt) {
-        cat = { ...adopt, subscriptionId: sub.id, packKey: key, remoteName: name };
+        cat = { ...adopt, subscriptionId: sub.id, packKey: key, remoteName: name, updatedAt: now() };
         if (forceParent) cat = { ...cat, parentId };
       } else {
+        const t = now();
         cat = {
           id: newId(),
           name,
-          createdAt: now(),
+          createdAt: t,
+          updatedAt: t,
           order: ++maxOrder,
           parentId,
           subscriptionId: sub.id,
@@ -356,7 +358,7 @@ export async function syncSubscription(
   );
   if (sub.deleteRemoved && gone.length > 0) {
     onProgress?.({ phase: 'cleanup', done: total, total });
-    apply([{ op: 'removeStickers', ids: gone.map((s) => s.id) }]);
+    apply([{ op: 'removeStickers', ids: gone.map((s) => s.id), at: now() }]);
     for (const s of gone) await platform.remove(s.file).catch(() => undefined);
     removed = gone.length;
   }

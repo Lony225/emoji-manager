@@ -28,6 +28,8 @@ export type DialogState =
     }
   | { kind: 'subscriptions'; focusAdd?: boolean }
   | { kind: 'settings' }
+  /** 局域网同步：附近的设备、配对、同步 */
+  | { kind: 'lanDevices' }
   | { kind: 'bulkTags'; ids: string[] }
   | { kind: 'bulkRename'; ids: string[] }
   | { kind: 'move'; ids: string[] }

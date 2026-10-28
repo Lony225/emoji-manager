@@ -10,6 +10,7 @@ import { SUBSCRIPTIONS_ENABLED } from '../../core/features';
 import { Modal } from '../Dialog';
 import { HotkeyInput } from '../HotkeyInput';
 import { Icon } from '../../ui/icons';
+import { useLanStore } from '../../ui/lanStore';
 
 const THEMES: { key: Theme; label: string }[] = [
   { key: 'system', label: '跟随系统' },
@@ -27,6 +28,10 @@ export function SettingsDialog() {
   const toast = useUiStore((s) => s.toast);
   const [libPath, setLibPath] = useState('');
   const [login, setLogin] = useState<{ enabled: boolean; available: boolean }>({ enabled: false, available: false });
+  const lanRunning = useLanStore((s) => s.running);
+  const lanError = useLanStore((s) => s.startError);
+  const lanPairs = useLanStore((s) => s.identity.pairs.length);
+  const lanOnline = useLanStore((s) => s.devices.length);
   const caps = platform.capabilities;
 
   useEffect(() => {
@@ -201,6 +206,34 @@ export function SettingsDialog() {
             />
           </div>
         </>
+      )}
+
+      {caps.lanSync && (
+        <div className="setting">
+          <div className="text">
+            局域网同步
+            <small>
+              和同一 Wi-Fi / 局域网里装了本应用的电脑、手机互相同步表情：自动发现设备，配对一次即可，之后增量同步，两边的改动都保留。
+            </small>
+            {settings.lanSync && lanError && <small className="error-text">{lanError}</small>}
+            {settings.lanSync && lanRunning && (
+              <small>
+                已配对 {lanPairs} 台，当前发现 {lanOnline} 台在线。
+              </small>
+            )}
+          </div>
+          <div className="row">
+            <input
+              type="checkbox"
+              checked={settings.lanSync}
+              onChange={(e) => updateSettings({ lanSync: e.target.checked })}
+              aria-label="局域网同步"
+            />
+            <button className="btn sm" disabled={!settings.lanSync} onClick={() => openDialog({ kind: 'lanDevices' })}>
+              <Icon name="wifi" size={14} /> 设备…
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="setting">

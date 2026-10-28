@@ -112,6 +112,45 @@ export interface MemeResult {
   ext: string;
 }
 
+// ---------------------------------------------------------------- 局域网同步
+
+/** 局域网里发现的一台装了本应用的设备 */
+export interface LanDevice {
+  id: string;
+  name: string;
+  os: OsKind;
+  version: string;
+  /** 连它的 HTTP 服务用的地址（同一台机器上的另一个实例会是 127.0.0.1） */
+  host: string;
+  port: number;
+  lastSeen: number;
+}
+
+/** 交给原生层的配置：本机身份 + 已配对设备的令牌（请求带着其中之一才放行） */
+export interface LanConfig {
+  id: string;
+  name: string;
+  tokens: { deviceId: string; token: string }[];
+}
+
+/** 原生层收到、转交给页面处理的请求（文件传输由原生层自己完成，不经过这里） */
+export interface LanIncoming {
+  kind: 'pair' | 'begin' | 'apply' | 'end' | 'unpair';
+  /** 带了有效令牌时，是哪台已配对设备发来的 */
+  from?: string;
+  body: unknown;
+}
+
+export interface LanJsonResponse {
+  status: number;
+  body: unknown;
+}
+
+export interface LanTarget {
+  host: string;
+  port: number;
+}
+
 export type PlatformKind = 'electron' | 'web' | 'capacitor';
 export type OsKind = 'windows' | 'mac' | 'linux' | 'android' | 'ios' | 'unknown';
 /** 当前渲染进程是主窗口还是桌面浮窗 */
@@ -150,6 +189,8 @@ export interface PlatformCapabilities {
   multiFolderPick: boolean;
   /** 用 meme-generator 的模板做表情（桌面端） */
   memeTemplates: boolean;
+  /** 局域网同步：UDP 发现 + 内置 HTTP 服务（桌面端、安卓） */
+  lanSync: boolean;
 }
 
 /**
@@ -258,4 +299,23 @@ export interface Platform {
   memeDownloadFonts(): Promise<void>;
   /** 字体 / 素材下载进度；返回取消订阅的函数 */
   onMemeProgress(cb: (p: MemeProgress) => void): () => void;
+
+  // —— 局域网同步（协议逻辑在 src/core/lan，这里只是网络）——
+  /** 启动发现广播和 HTTP 服务；返回服务端口 */
+  lanStart(config: LanConfig): Promise<{ port: number }>;
+  lanStop(): Promise<void>;
+  /** 本机名称或配对列表变了 */
+  lanConfigure(config: LanConfig): Promise<void>;
+  /** 本机的默认名称（主机名 / 手机型号） */
+  lanDefaultName(): Promise<string>;
+  /** 在线设备列表有变化（上线、下线、改名） */
+  onLanDevices(cb: (devices: LanDevice[]) => void): void;
+  /** 其他设备发来的请求：页面处理后返回状态码和 JSON；只有主窗口注册 */
+  onLanRequest(cb: (req: LanIncoming) => Promise<LanJsonResponse>): void;
+  /** 向某台设备发 JSON 请求（path 相对协议前缀，如 /begin） */
+  lanRequest(target: LanTarget, token: string, path: string, body: unknown, timeoutMs: number): Promise<LanJsonResponse>;
+  /** 把资料目录里的文件传给对方；返回 HTTP 状态码 */
+  lanUpload(target: LanTarget, token: string, path: string, rel: string): Promise<number>;
+  /** 从对方取文件存到资料目录；返回 HTTP 状态码 */
+  lanDownload(target: LanTarget, token: string, path: string, rel: string): Promise<number>;
 }

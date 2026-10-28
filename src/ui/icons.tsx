@@ -43,6 +43,10 @@ const PATHS = {
   paste: 'M9 3h6v3H9zM15 4h3v16H6V4h3M9 11h6M9 15h4',
   text: 'M5 7V4h14v3M12 4v16M9 20h6',
   sparkles: 'M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2zM5 15l1 2.5 2.5 1-2.5 1L5 22l-1-2.5-2.5-1 2.5-1zM19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z',
+  phone: 'M7 3h10v18H7zM11 18h2',
+  laptop: 'M4 5h16v11H4zM2 19h20',
+  wifi: 'M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0M12 19h.01',
+  unlink: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5M4 4l16 16',
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -2,6 +2,7 @@
 // 流程：导入 → 添加订阅（单包 + 多包）→ 搜索/标签筛选 → 点击复制 → 收藏 → 右键菜单 → 截图
 //       → 关闭窗口（验证关闭前落盘）→ 重新启动（验证数据持久化与图片显示）
 import { spawn, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -11,6 +12,8 @@ import { createSampleServer } from './serve-samples.mjs';
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 9333;
+/** 局域网同步测试里第二个实例的调试端口 */
+const PORT2 = 9334;
 const SAMPLE_PORT = 8788;
 const args = new Set(process.argv.slice(2));
 
@@ -97,11 +100,11 @@ class Cdp {
 }
 
 /** 找到主窗口（无 hash）或浮窗（#float）的页面 */
-async function findPage(role = 'main') {
+async function findPage(role = 'main', port = PORT) {
   const t0 = Date.now();
   for (;;) {
     try {
-      const res = await fetch(`http://127.0.0.1:${PORT}/json/list`);
+      const res = await fetch(`http://127.0.0.1:${port}/json/list`);
       const list = await res.json();
       const page = list.find(
         (t) => t.type === 'page' && t.url.startsWith('app://') && (role === 'float') === t.url.endsWith('#float'),
@@ -117,13 +120,13 @@ async function findPage(role = 'main') {
 
 // ---------------------------------------------------------------- 启动 / 关闭
 
-function launch(dataDir, extraEnv = {}) {
+function launch(dataDir, extraEnv = {}, port = PORT) {
   // E2E_ELECTRON_BIN 可以指向打包后的可执行文件，用同一套测试验证安装包
   const electronPath = process.env.E2E_ELECTRON_BIN || require('electron');
   const env = { ...process.env, EMOJI_USER_DATA_DIR: dataDir, ...extraEnv };
   delete env.VITE_DEV_SERVER_URL;
   delete env.ELECTRON_RUN_AS_NODE;
-  const child = spawn(electronPath, ['.', `--remote-debugging-port=${PORT}`], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(electronPath, ['.', `--remote-debugging-port=${port}`], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   const logs = [];
   child.stdout.on('data', (d) => logs.push(String(d)));
   child.stderr.on('data', (d) => logs.push(String(d)));
@@ -978,6 +981,150 @@ async function main() {
     check('空掉的“猫猫”分类被删除', !afterRemove.cats.includes('猫猫'), JSON.stringify(afterRemove.cats));
     check('仍有本地表情的“狗狗”及其父分类保留', afterRemove.cats.includes('狗狗') && afterRemove.cats.includes('示例：表情合集'), JSON.stringify(afterRemove.cats));
     assertEq('保留的分类不再关联已删除的订阅', afterRemove.linked, 1);
+
+    // ---- 局域网同步：再起一个实例（另一个数据目录）当作“另一台设备”，两边通过 UDP 发现、配对、双向同步
+    console.log('\n局域网同步');
+    const dataDir2 = path.join(ROOT, '.e2e-tmp', `${Date.now()}-b`);
+    mkdirSync(dataDir2, { recursive: true });
+    const proc2 = launch(dataDir2, memeEnv, PORT2);
+    let cdp2;
+    try {
+      const page2 = await findPage('main', PORT2);
+      cdp2 = await Cdp.connect(page2.webSocketDebuggerUrl);
+      await cdp2.waitFor('window.__emojiStore && window.__emojiStore.getState().loaded', 20000, '第二个实例加载完成');
+      // B 先有一张自己的表情（现画一张，保证 A 那边没有内容相同的图）
+      const impB = await cdp2.eval(`(async () => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; const x = c.getContext('2d'); x.fillStyle = '#3366cc'; x.fillRect(0, 0, 40, 40); x.fillStyle = '#fff'; x.fillRect(8, 8, 24, 24);
+        const blob = await new Promise((r) => c.toBlob(r, 'image/png')); const b = new Uint8Array(await blob.arrayBuffer());
+        return window.__emojiStore.getState().importFiles([{ name: 'B 自己的.png', bytes: b }], null); })()`);
+      assertEq('B 导入自己的表情', impB.added, 1);
+      const countA0 = await cdp.eval('window.__emojiStore.getState().stickers.length');
+      const catsA0 = await cdp.eval('window.__emojiStore.getState().categories.length');
+
+      // 两边都打开局域网同步
+      await cdp.eval("window.__emojiStore.getState().updateSettings({ lanSync: true })");
+      await cdp2.eval("window.__emojiStore.getState().updateSettings({ lanSync: true })");
+      await cdp.waitFor('window.__lanStore.getState().running ? 1 : 0', 10000, 'A 的同步服务启动');
+      await cdp2.waitFor('window.__lanStore.getState().running ? 1 : 0', 10000, 'B 的同步服务启动');
+      check('两边的同步服务都启动了', true);
+      const idA = await cdp.eval('window.__lanStore.getState().identity.id');
+      const idB = await cdp2.eval('window.__lanStore.getState().identity.id');
+      check('本机身份已生成', typeof idA === 'string' && idA.length === 32 && idA !== idB, `${idA} / ${idB}`);
+      await cdp.waitFor(`window.__lanStore.getState().devices.some(d => d.id === '${idB}') ? 1 : 0`, 15000, 'A 发现 B');
+      await cdp2.waitFor(`window.__lanStore.getState().devices.some(d => d.id === '${idA}') ? 1 : 0`, 15000, 'B 发现 A');
+      check('两边通过 UDP 广播互相发现', true);
+      const seenB = await cdp.eval(`window.__lanStore.getState().devices.find(d => d.id === '${idB}')`);
+      check('发现的设备带有地址和端口', seenB.os === 'windows' && seenB.port > 0 && /^\d+\.\d+\.\d+\.\d+$/.test(seenB.host), JSON.stringify(seenB));
+      // 改名会随下一条广播传过去
+      await cdp.eval("window.__lanActions.renameSelf('测试电脑 A')");
+      await cdp.waitFor(`window.__lanStore.getState().devices.find(d => d.id === '${idB}') ? 1 : 0`, 5000, 'B 仍在线');
+      const renamed = await cdp2.waitFor(`window.__lanStore.getState().devices.find(d => d.id === '${idA}')?.name === '测试电脑 A' ? 1 : 0`, 10000, 'B 看到 A 的新名字').catch(() => 0);
+      check('改名后对方看到新名字', renamed === 1);
+
+      // 设备对话框列出未配对的设备
+      await cdp.eval("window.__uiStore.getState().openDialog({ kind: 'lanDevices' })");
+      await cdp.waitFor("document.querySelectorAll('.lan-item').length >= 1 ? 1 : 0", 5000, '设备列表');
+      const rowText = await cdp.eval(`document.querySelector('.lan-item[data-device="${idB}"]')?.textContent ?? ''`);
+      check('设备列表显示未配对的 B', rowText.includes('未配对') && rowText.includes('配对'), rowText.slice(0, 60));
+
+      // 配对：A 发起 → B 弹出确认（配对码一致）→ 允许 → A 自动做第一次同步
+      await cdp.eval(`document.querySelector('.lan-item[data-device="${idB}"] .btn.primary').click()`);
+      const dialogB = await cdp2.waitFor("document.querySelector('.dialog h3')?.textContent === '允许配对？' ? document.querySelector('.dialog p')?.textContent : ''", 15000, 'B 弹出配对确认');
+      const codeA = await cdp.eval("(window.__uiStore.getState().toasts.map(t => t.message).join(' ').match(/配对码 ([0-9A-F]{4})/) || [])[1] || ''");
+      check('B 的确认框显示 A 的名字和同一个配对码', dialogB.includes('测试电脑 A') && !!codeA && dialogB.includes(`配对码：${codeA}`), `${codeA} / ${dialogB.slice(0, 80)}`);
+      await cdp2.eval("Array.from(document.querySelectorAll('.dialog footer button')).find(b => b.textContent.includes('允许')).click()");
+      await cdp.waitFor(`window.__lanStore.getState().identity.pairs.some(p => p.id === '${idB}') ? 1 : 0`, 15000, 'A 记下配对');
+      await cdp2.waitFor(`window.__lanStore.getState().identity.pairs.some(p => p.id === '${idA}') ? 1 : 0`, 15000, 'B 记下配对');
+      check('两边都记下了配对', true);
+      const storedB = await cdp2.eval("JSON.parse(localStorage.getItem('emoji-manager.lan')).pairs.length");
+      assertEq('配对信息存在 localStorage（不进资料文件）', storedB, 1);
+
+      // 第一次同步：A 的全部表情到 B，B 的那张到 A
+      await cdp.waitFor(`window.__emojiStore.getState().stickers.length === ${countA0 + 1} ? 1 : 0`, 30000, 'A 收到 B 的表情');
+      await cdp2.waitFor(`window.__emojiStore.getState().stickers.length === ${countA0 + 1} ? 1 : 0`, 30000, 'B 收到 A 的表情');
+      await cdp.waitFor('Object.keys(window.__lanStore.getState().syncing).length === 0 ? 1 : 0', 30000, 'A 同步结束');
+      check('首次同步后两边表情数一致', true);
+      assertEq('B 收到 A 的全部分类', await cdp2.eval('window.__emojiStore.getState().categories.length'), catsA0);
+      // 拿 A 的一张有分类、有标签的表情，看 B 那边是否原样（文件名相同、名字 / 分类 / 标签相同、来源变为本地）
+      const sampleA = await cdp.eval("(() => { const x = window.__emojiStore.getState().stickers.find(t => t.categoryId && t.tags.length); return { id: x.id, name: x.name, file: x.file, cat: x.categoryId, tags: x.tags }; })()");
+      const sampleB = await cdp2.eval(`(() => { const x = window.__emojiStore.getState().stickers.find(t => t.id === '${sampleA.id}'); return x ? { id: x.id, name: x.name, file: x.file, cat: x.categoryId, tags: x.tags, src: x.source.type } : null; })()`);
+      check('同步过来的表情保留名字、分类、标签，来源为本地', !!sampleB && sampleB.name === sampleA.name && sampleB.file === sampleA.file && sampleB.cat === sampleA.cat && JSON.stringify(sampleB.tags) === JSON.stringify(sampleA.tags) && sampleB.src === 'local', JSON.stringify({ sampleA, sampleB }));
+      check('图片文件真的传到了 B 的数据目录', existsSync(path.join(dataDir2, 'library', sampleA.file)));
+      const pairStatus = await cdp.eval(`window.__lanStore.getState().identity.pairs.find(p => p.id === '${idB}')`);
+      check('A 记录了同步时间和结果', pairStatus.lastSyncAt > 0 && !pairStatus.lastError && /本机新增 1/.test(pairStatus.lastResult ?? '') && new RegExp(`对方新增 ${countA0}，分类改动 ${catsA0}`).test(pairStatus.lastResult ?? ''), JSON.stringify(pairStatus));
+      await cdp.eval('window.__uiStore.getState().closeDialog()');
+
+      // 增量：A 改名 + 删除 + 新建分类并移动，B 收藏；自动同步后两边一致
+      const [renameTarget, delTarget] = await cdp.eval("window.__emojiStore.getState().stickers.filter(s => s.source.type === 'local' && s.categoryId).slice(0, 2).map(s => s.id)");
+      const favTarget = await cdp2.eval("window.__emojiStore.getState().stickers.find(s => s.name === 'B 自己的').id");
+      const newCatId = await cdp.eval("window.__emojiStore.getState().addCategory('局域网新分类').id");
+      await cdp.eval(`window.__emojiStore.getState().setCategoryFor(['${renameTarget}'], '${newCatId}')`);
+      await cdp.eval(`window.__emojiStore.getState().updateSticker('${renameTarget}', { name: '局域网改的名' })`);
+      await cdp.eval(`window.__emojiStore.getState().deleteStickers(['${delTarget}'])`);
+      await cdp2.eval(`window.__emojiStore.getState().toggleFavorite('${favTarget}')`);
+      const tomb = await cdp.eval("window.__emojiStore.getState().deleted.filter(t => t.kind === 'sticker').length");
+      check('删除后留下删除记录', tomb >= 1, String(tomb));
+      await cdp2.waitFor(`(() => { const s = window.__emojiStore.getState(); return s.stickers.some(x => x.id === '${renameTarget}' && x.name === '局域网改的名' && x.categoryId === '${newCatId}') && s.categories.some(c => c.id === '${newCatId}' && c.name === '局域网新分类') && !s.stickers.some(x => x.id === '${delTarget}') ? 1 : 0; })()`, 40000, 'B 收到改名、新分类和删除');
+      await cdp.waitFor(`window.__emojiStore.getState().stickers.find(x => x.id === '${favTarget}')?.favorite ? 1 : 0`, 40000, 'A 收到收藏');
+      check('改名、新建分类并移动、删除、收藏自动双向同步', true);
+      // B 删掉这个分类：A 那边分类消失，里面的表情回到未分类
+      await cdp2.eval(`window.__emojiStore.getState().deleteCategory('${newCatId}', false)`);
+      await cdp.waitFor(`(() => { const s = window.__emojiStore.getState(); return !s.categories.some(c => c.id === '${newCatId}') && s.stickers.find(x => x.id === '${renameTarget}')?.categoryId === null ? 1 : 0; })()`, 40000, 'A 收到分类删除');
+      check('删除分类同步过去，里面的表情回到未分类', true);
+      check('被删表情的图片在 B 也删掉了', !readdirSync(path.join(dataDir2, 'library', 'stickers')).some((f) => f.startsWith(delTarget)));
+
+      // 内容相同的图片两边各自导入：合并成一条，B 的文件改名复用，不重复
+      const pngHash = createHash('sha256').update(Buffer.from(png, 'base64')).digest('hex');
+      const localA = await cdp.eval(`window.__emojiStore.getState().stickers.find(s => s.hash === '${pngHash}')`);
+      check('A 里有这张图（去重用的 sha256）', !!localA, pngHash.slice(0, 8));
+      const countBeforeDup = await cdp2.eval('window.__emojiStore.getState().stickers.length');
+      const impDup = await cdp2.eval(`(() => { const b = Uint8Array.from(atob('${png}'), c => c.charCodeAt(0));
+        return window.__emojiStore.getState().importFiles([{ name: 'B 也导入了同一张.png', bytes: b }], null); })()`);
+      // B 已经从 A 同步到了这张图，所以按内容去重直接跳过；换个方式制造“各自导入”：先删掉 B 的那张（留墓碑），再导入 → 新 id
+      check('B 导入时按内容去重（已经同步过来了）', impDup.skipped === 1 && impDup.added === 0, JSON.stringify(impDup));
+      await cdp2.eval(`window.__emojiStore.getState().deleteStickers(['${localA.id}'])`);
+      const impDup2 = await cdp2.eval(`(() => { const b = Uint8Array.from(atob('${png}'), c => c.charCodeAt(0));
+        return window.__emojiStore.getState().importFiles([{ name: 'B 重新导入同一张.png', bytes: b }], null); })()`);
+      check('B 删除后重新导入得到新 id', impDup2.added === 1, JSON.stringify(impDup2));
+      const dupIdB = await cdp2.eval(`window.__emojiStore.getState().stickers.find(s => s.hash === '${pngHash}').id`);
+      check('新 id 和 A 的不同', dupIdB !== localA.id);
+      // 同步后：A 的那条被 B 的墓碑删掉（B 删得比 A 改得晚），B 新导入的那条传给 A → 两边各一条，id 是 B 的新 id
+      await cdp.waitFor(`(() => { const s = window.__emojiStore.getState(); const same = s.stickers.filter(x => x.hash === '${pngHash}'); return same.length === 1 && same[0].id === '${dupIdB}' ? 1 : 0; })()`, 40000, 'A 收到删除和新导入');
+      await cdp2.waitFor('Object.keys(window.__lanStore.getState().syncing).length === 0 ? 1 : 0', 30000, 'B 空闲');
+      assertEq('B 里这张图仍只有一条', await cdp2.eval(`window.__emojiStore.getState().stickers.filter(x => x.hash === '${pngHash}').length`), 1);
+      assertEq('B 的表情数不变（删一张、导一张）', await cdp2.eval('window.__emojiStore.getState().stickers.length'), countBeforeDup);
+      await cdp.waitFor('Object.keys(window.__lanStore.getState().syncing).length === 0 ? 1 : 0', 30000, 'A 空闲');
+      await cdp2.waitFor('Object.keys(window.__lanStore.getState().syncing).length === 0 ? 1 : 0', 30000, 'B 空闲');
+      await sleep(4000);
+      const finalA = await cdp.eval("(() => { const s = window.__emojiStore.getState(); return { n: s.stickers.length, ids: s.stickers.map(x => x.id).sort().join(','), cats: s.categories.length }; })()");
+      const finalB = await cdp2.eval("(() => { const s = window.__emojiStore.getState(); return { n: s.stickers.length, ids: s.stickers.map(x => x.id).sort().join(','), cats: s.categories.length }; })()");
+      check('稳定后两边的表情集合完全一致', finalA.ids === finalB.ids && finalA.cats === finalB.cats, `${finalA.n} / ${finalB.n}`);
+      // 两边一致时不应再有文件传输：再手动同步一次
+      const again = await cdp.eval(`window.__lanActions.syncWith('${idB}', { manual: true })`);
+      check('再次同步没有变化、不传文件', again && again.sent === 0 && again.received === 0 && again.local.added === 0 && again.remote.added === 0, JSON.stringify(again));
+
+      // 解除配对：B 解除并通知 A
+      await cdp2.eval(`window.__lanActions.removePair('${idA}', true)`);
+      await cdp.waitFor(`window.__lanStore.getState().identity.pairs.length === 0 ? 1 : 0`, 10000, 'A 收到解除配对');
+      check('一边解除配对后另一边也解除', true);
+      // 关掉 B：A 的列表里 B 下线
+      await Promise.race([cdp2.eval('window.emojiBridge.quit()').catch(() => undefined), sleep(3000)]);
+      cdp2.close();
+      cdp2 = null;
+      const code3 = await Promise.race([proc2.exited, sleep(10000).then(() => 'timeout')]);
+      check('第二个实例正常退出', code3 === 0, `退出码 ${code3}`);
+      const offline = await cdp.waitFor(`window.__lanStore.getState().devices.some(d => d.id === '${idB}') ? 0 : 1`, 20000, 'B 下线').catch(() => 0);
+      check('对方退出后十几秒内从在线列表消失', offline === 1);
+      await cdp.eval("window.__emojiStore.getState().updateSettings({ lanSync: false })");
+      await cdp.waitFor('window.__lanStore.getState().running ? 0 : 1', 5000, '关闭开关后服务停止');
+      check('关闭开关后服务停止', true);
+      const logs2 = proc2.logs.join('');
+      const errs2 = logs2.split('\n').filter((l) => /\b(Error|Uncaught|TypeError)\b/.test(l) && !/DevTools/.test(l));
+      check('第二个实例的主进程没有报错', errs2.length === 0, errs2.slice(0, 2).join(' | '));
+    } finally {
+      if (cdp2) cdp2.close();
+      if (proc2.child.exitCode === null) proc2.child.kill();
+    }
+
     const code2 = await closeApp(cdp, proc);
     check('第二次正常退出', code2 === 0, `退出码 ${code2}`);
     const allLogs = proc.logs.join('');

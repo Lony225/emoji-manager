@@ -40,6 +40,8 @@ import { installDeepLinkHandler } from './ui/deeplink';
 import { SUBSCRIPTIONS_ENABLED } from './core/features';
 import { installThumbWorker } from './ui/thumbs';
 import { installMobileHandlers } from './ui/mobile';
+import { installLanSync } from './ui/lan';
+import { LanDevicesDialog } from './components/dialogs/LanDevicesDialog';
 import { useTheme } from './ui/hooks';
 
 function useShortcuts() {
@@ -147,6 +149,8 @@ function Dialogs() {
       return SUBSCRIPTIONS_ENABLED ? <SubscriptionsDialog focusAdd={dialog.focusAdd} /> : null;
     case 'settings':
       return <SettingsDialog />;
+    case 'lanDevices':
+      return <LanDevicesDialog />;
     case 'bulkTags':
       return <BulkTagDialog key={dialog.ids.join()} ids={dialog.ids} />;
     case 'bulkRename':
@@ -217,6 +221,7 @@ export function App() {
     installDeepLinkHandler();
     installThumbWorker();
     installMobileHandlers();
+    installLanSync();
     if (!useLibraryStore.getState().settings.checkUpdatesOnStart) return;
     const timer = setTimeout(() => void runUpdateCheck(false), 4000);
     return () => clearTimeout(timer);

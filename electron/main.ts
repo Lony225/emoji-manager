@@ -24,6 +24,8 @@ import { execFile } from 'node:child_process';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { registerMemeIpc, stopWorker as stopMemeWorker } from './memes';
+import { defaultDeviceName, LanService } from './lan';
+import type { LanConfig, LanTarget } from '../src/platform/types';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const MAX_DOWNLOAD = 100 * 1024 * 1024;
@@ -806,6 +808,7 @@ function toggleFloat(): void {
 // ---------------------------------------------------------------- 协议链接（网页一键导入）
 
 let pendingDeepLink: string | null = null;
+let lanService: LanService | null = null;
 
 function extractDeepLink(argv: string[]): string | null {
   return argv.find((a) => typeof a === 'string' && a.toLowerCase().startsWith(`${PROTOCOL}://`)) ?? null;
@@ -1026,6 +1029,34 @@ function registerIpc(): void {
 
   registerMemeIpc((channel, payload) => broadcast(channel, payload));
 
+  // 局域网同步：只有主窗口的页面负责处理请求，浮窗只读
+  const lan = new LanService({
+    version: app.getVersion(),
+    os: process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux',
+    resolve: (rel) => safeJoin(rel),
+    mainWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
+    broadcast: (channel, payload) => broadcast(channel, payload),
+  });
+  lanService = lan;
+  const validConfig = (raw: unknown): LanConfig => {
+    if (!isRecord(raw) || typeof raw.id !== 'string' || typeof raw.name !== 'string') throw new Error('无效的同步配置');
+    const tokens = Array.isArray(raw.tokens)
+      ? raw.tokens
+          .filter((t): t is { deviceId: string; token: string } => isRecord(t) && typeof t.deviceId === 'string' && typeof t.token === 'string')
+          .map((t) => ({ deviceId: t.deviceId, token: t.token }))
+      : [];
+    return { id: raw.id.slice(0, 64), name: raw.name.slice(0, 60), tokens };
+  };
+  ipcMain.handle('lan:start', async (_e, config: unknown) => lan.start(validConfig(config)));
+  ipcMain.handle('lan:stop', async () => lan.stop());
+  ipcMain.handle('lan:configure', async (_e, config: unknown) => lan.configure(validConfig(config)));
+  ipcMain.handle('lan:defaultName', async () => defaultDeviceName());
+  ipcMain.handle('lan:request', async (_e, target: LanTarget, token: string, sub: string, body: unknown, timeoutMs: number) =>
+    lan.request(target, typeof token === 'string' ? token : '', sub, body, Math.min(Math.max(Number(timeoutMs) || 30_000, 1000), 300_000)),
+  );
+  ipcMain.handle('lan:upload', async (_e, target: LanTarget, token: string, sub: string, rel: string) => lan.upload(target, String(token), sub, String(rel)));
+  ipcMain.handle('lan:download', async (_e, target: LanTarget, token: string, sub: string, rel: string) => lan.download(target, String(token), sub, String(rel)));
+
   ipcMain.handle('usage:get', async () => usage);
   ipcMain.handle('usage:record', async (_e, id: string) => recordUsage(id));
 
@@ -1095,6 +1126,7 @@ if (!gotLock) {
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     stopMemeWorker();
+    void lanService?.stop();
   });
 
   app.on('window-all-closed', () => {

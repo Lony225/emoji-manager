@@ -4,10 +4,10 @@ import { newId } from './ids';
 import { applyOps, type LibraryOp } from './ops';
 import { errorMessage, syncSubscription as runSync, type SyncProgress, type SyncResult } from './subscription/sync';
 import { extFromBytes, extFromName, fileStem, sha256Hex } from './images';
-import { migrate } from './migrate';
+import { migrate, pruneTombstones } from './migrate';
 import { SUBSCRIPTIONS_ENABLED } from './features';
 import { stickerKey } from './subscription/sync';
-import { emptyLibrary, type Category, type Library, type Settings, type Sticker, type Subscription } from './types';
+import { emptyLibrary, type Category, type Library, type Settings, type Sticker, type Subscription, type Tombstone } from './types';
 import type { UsageMap } from '../platform/types';
 import { buildPackage, readPackage, type BuildPackageResult } from './package';
 import { categoryIdsIncludingChildren, isSelfOrDescendant, sortedCategories } from './selectors';
@@ -132,6 +132,7 @@ function serialize(s: LibraryState): string {
     stickers: s.stickers,
     subscriptions: s.subscriptions,
     settings: s.settings,
+    deleted: s.deleted,
   };
   return JSON.stringify(lib);
 }
@@ -197,7 +198,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       if (!text) return;
       try {
         const lib = migrate(JSON.parse(text));
-        set({ categories: lib.categories, stickers: lib.stickers, subscriptions: lib.subscriptions, settings: lib.settings });
+        set({ categories: lib.categories, stickers: lib.stickers, subscriptions: lib.subscriptions, settings: lib.settings, deleted: lib.deleted });
       } catch {
         /* 主窗口正在写入时可能读到半截文件，等下一次通知 */
       }
@@ -219,7 +220,8 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       const parent = parentId ? get().categories.find((c) => c.id === parentId) : undefined;
       if (parentId && !parent) throw new Error('父分类不存在');
       const order = get().categories.reduce((m, c) => Math.max(m, c.order), -1) + 1;
-      const category: Category = { id: newId(), name: clean, createdAt: Date.now(), order };
+      const t = Date.now();
+      const category: Category = { id: newId(), name: clean, createdAt: t, updatedAt: t, order };
       if (parent) category.parentId = parent.id;
       set((s) => ({ categories: [...s.categories, category] }));
       return category;
@@ -235,7 +237,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
     renameCategory(id, name) {
       const clean = name.trim().slice(0, 50);
       if (!clean) return;
-      set((s) => ({ categories: s.categories.map((c) => (c.id === id ? { ...c, name: clean } : c)) }));
+      set((s) => ({ categories: s.categories.map((c) => (c.id === id && c.name !== clean ? { ...c, name: clean, updatedAt: Date.now() } : c)) }));
     },
 
     async deleteCategory(id, deleteStickers) {
@@ -250,7 +252,11 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           (s) => ({ ...s, categoryId: null }),
         );
       }
-      set((s) => ({ categories: s.categories.filter((c) => !ids.has(c.id)) }));
+      const t = Date.now();
+      set((s) => ({
+        categories: s.categories.filter((c) => !ids.has(c.id)),
+        deleted: addTombstones(s.deleted, Array.from(ids, (id) => ({ kind: 'category' as const, id, at: t }))),
+      }));
     },
 
     moveCategory(id, direction) {
@@ -265,7 +271,8 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       const a = sorted.indexOf(siblings[idx]);
       const b = sorted.indexOf(siblings[target]);
       [sorted[a], sorted[b]] = [sorted[b], sorted[a]];
-      set({ categories: sorted.map((c, i) => ({ ...c, order: i })) });
+      const t = Date.now();
+      set({ categories: sorted.map((c, i) => (c.order === i ? c : { ...c, order: i, updatedAt: t })) });
     },
 
     setCategoryParent(id, parentId) {
@@ -273,7 +280,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       set((s) => ({
         categories: s.categories.map((c) => {
           if (c.id !== id) return c;
-          const next = { ...c };
+          const next = { ...c, updatedAt: Date.now() };
           if (parentId) next.parentId = parentId;
           else delete next.parentId;
           return next;
@@ -290,7 +297,8 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       const sorted = sortedCategories(cats);
       const siblings = sorted.filter((c) => c.id !== id && (c.parentId ?? null) === parentId);
       const at = Math.max(0, Math.min(index, siblings.length));
-      const moved: Category = { ...me };
+      const t = Date.now();
+      const moved: Category = { ...me, updatedAt: t };
       if (parentId) moved.parentId = parentId;
       else delete moved.parentId;
       siblings.splice(at, 0, moved);
@@ -304,7 +312,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
         categories: s.categories.map((c) => {
           if (c.id === id) return { ...moved, order: orders.get(id) ?? moved.order };
           const o = orders.get(c.id);
-          return o === undefined ? c : { ...c, order: o };
+          return o === undefined || o === c.order ? c : { ...c, order: o, updatedAt: t };
         }),
       }));
     },
@@ -471,8 +479,10 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           hiddenBySub.set(v.source.subscriptionId, list);
         }
       }
+      const t = Date.now();
       set((s) => ({
         stickers: s.stickers.filter((x) => !idSet.has(x.id)),
+        deleted: addTombstones(s.deleted, victims.map((v) => ({ kind: 'sticker' as const, id: v.id, at: t }))),
         subscriptions:
           hiddenBySub.size === 0
             ? s.subscriptions
@@ -491,16 +501,18 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
     renameTag(from, to) {
       const clean = cleanTag(to);
       if (!clean || clean === from) return;
+      const t = Date.now();
       set((s) => ({
         stickers: s.stickers.map((x) =>
-          x.tags.includes(from) ? { ...x, tags: uniq(x.tags.map((t) => (t === from ? clean : t))) } : x,
+          x.tags.includes(from) ? { ...x, tags: uniq(x.tags.map((tag) => (tag === from ? clean : tag))), updatedAt: t } : x,
         ),
       }));
     },
 
     deleteTag(tag) {
+      const t = Date.now();
       set((s) => ({
-        stickers: s.stickers.map((x) => (x.tags.includes(tag) ? { ...x, tags: x.tags.filter((t) => t !== tag) } : x)),
+        stickers: s.stickers.map((x) => (x.tags.includes(tag) ? { ...x, tags: x.tags.filter((x2) => x2 !== tag), updatedAt: t } : x)),
       }));
     },
 
@@ -582,7 +594,11 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           for (const c of s.categories) {
             if (c.parentId && (keep.has(c.id) || !c.subscriptionId || c.subscriptionId !== id)) keep.add(c.parentId);
           }
-          return { categories: s.categories.filter((c) => c.subscriptionId !== id || keep.has(c.id)) };
+          const gone = s.categories.filter((c) => c.subscriptionId === id && !keep.has(c.id));
+          return {
+            categories: s.categories.filter((c) => c.subscriptionId !== id || keep.has(c.id)),
+            deleted: addTombstones(s.deleted, gone.map((c) => ({ kind: 'category' as const, id: c.id, at: Date.now() }))),
+          };
         });
       } else {
         patchStickers(
@@ -677,6 +693,12 @@ function assertCanPlace(cats: Category[], id: string, parentId: string | null): 
   }
 }
 
+/** 追加删除记录（同一条目只留最新一条，顺手清理过期的） */
+function addTombstones(list: Tombstone[], extra: Tombstone[]): Tombstone[] {
+  if (extra.length === 0) return list;
+  return pruneTombstones([...list, ...extra]);
+}
+
 function stripLink(c: Category): Category {
   const copy = { ...c };
   delete copy.subscriptionId;
@@ -692,7 +714,8 @@ useLibraryStore.subscribe((s, prev) => {
     s.categories !== prev.categories ||
     s.stickers !== prev.stickers ||
     s.subscriptions !== prev.subscriptions ||
-    s.settings !== prev.settings
+    s.settings !== prev.settings ||
+    s.deleted !== prev.deleted
   ) {
     scheduleSave();
   }

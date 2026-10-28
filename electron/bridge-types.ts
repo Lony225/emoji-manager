@@ -3,6 +3,11 @@ import type {
   DownloadResult,
   FetchBytesResult,
   FetchTextResult,
+  LanConfig,
+  LanDevice,
+  LanIncoming,
+  LanJsonResponse,
+  LanTarget,
   MemeImageInput,
   MemeOptionValues,
   MemeProgress,
@@ -89,6 +94,17 @@ export interface EmojiBridge {
   memeGenerate(key: string, images: MemeImageInput[], texts: string[], options: MemeOptionValues): Promise<MemeResult>;
   memeDownloadFonts(): Promise<void>;
   onMemeProgress(cb: (p: MemeProgress) => void): () => void;
+
+  // —— 局域网同步 ——
+  lanStart(config: LanConfig): Promise<{ port: number }>;
+  lanStop(): Promise<void>;
+  lanConfigure(config: LanConfig): Promise<void>;
+  lanDefaultName(): Promise<string>;
+  onLanDevices(cb: (devices: LanDevice[]) => void): void;
+  onLanRequest(cb: (req: LanIncoming) => Promise<LanJsonResponse>): void;
+  lanRequest(target: LanTarget, token: string, path: string, body: unknown, timeoutMs: number): Promise<LanJsonResponse>;
+  lanUpload(target: LanTarget, token: string, path: string, rel: string): Promise<number>;
+  lanDownload(target: LanTarget, token: string, path: string, rel: string): Promise<number>;
 }
 
 declare global {

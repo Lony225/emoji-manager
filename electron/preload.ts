@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { EmojiBridge } from './bridge-types';
-import type { MemeProgress, UsageMap } from '../src/platform/types';
+import type { LanDevice, LanIncoming, LanJsonResponse, MemeProgress, UsageMap } from '../src/platform/types';
 
 function cleanError(e: unknown): Error {
   const msg = e instanceof Error ? e.message : String(e);
@@ -95,6 +95,29 @@ const bridge: EmojiBridge = {
     ipcRenderer.on('memes:progress', listener);
     return () => ipcRenderer.removeListener('memes:progress', listener);
   },
+
+  lanStart: (config) => invoke('lan:start', config),
+  lanStop: () => invoke('lan:stop'),
+  lanConfigure: (config) => invoke('lan:configure', config),
+  lanDefaultName: () => invoke('lan:defaultName'),
+  onLanDevices(cb) {
+    ipcRenderer.on('lan:devices', (_e, devices: LanDevice[]) => cb(devices));
+  },
+  onLanRequest(cb) {
+    // 主进程的 HTTP 服务收到请求后转交给页面，页面处理完把结果发回去
+    ipcRenderer.on('lan:request', async (_e, reqId: string, req: LanIncoming) => {
+      let res: LanJsonResponse;
+      try {
+        res = await cb(req);
+      } catch (err) {
+        res = { status: 500, body: { error: err instanceof Error ? err.message : String(err) } };
+      }
+      ipcRenderer.send('lan:response', reqId, res);
+    });
+  },
+  lanRequest: (target, token, path, body, timeoutMs) => invoke('lan:request', target, token, path, body, timeoutMs),
+  lanUpload: (target, token, path, rel) => invoke('lan:upload', target, token, path, rel),
+  lanDownload: (target, token, path, rel) => invoke('lan:download', target, token, path, rel),
 };
 
 contextBridge.exposeInMainWorld('emojiBridge', bridge);
