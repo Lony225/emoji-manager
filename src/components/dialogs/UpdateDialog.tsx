@@ -1,17 +1,18 @@
 import { useLibraryStore } from '../../core/store';
 import { useUiStore } from '../../ui/uiStore';
-import { pickAsset, plainNotes, type LatestRelease } from '../../core/update';
+import { pickAsset, type LatestRelease } from '../../core/update';
 import { formatBytes } from '../../core/images';
 import { platform } from '../../platform';
 import { Modal } from '../Dialog';
 import { Icon } from '../../ui/icons';
+import { ReleaseNotes } from '../ReleaseNotes';
 
 export function UpdateDialog({ release, current }: { release: LatestRelease; current: string }) {
   const closeDialog = useUiStore((s) => s.closeDialog);
   const toast = useUiStore((s) => s.toast);
   const updateSettings = useLibraryStore((s) => s.updateSettings);
   const asset = pickAsset(release.assets, platform.os, platform.arch);
-  const notes = plainNotes(release.notes);
+  const hasNotes = release.notes.trim() !== '';
   const date = release.publishedAt ? new Date(release.publishedAt).toLocaleDateString('zh-CN') : '';
 
   const download = () => {
@@ -52,7 +53,7 @@ export function UpdateDialog({ release, current }: { release: LatestRelease; cur
           </span>
         )}
       </div>
-      {notes ? <pre className="notes">{notes}</pre> : <p>这个版本没有附带更新说明。</p>}
+      {hasNotes ? <ReleaseNotes markdown={release.notes} /> : <p>这个版本没有附带更新说明。</p>}
       <div className="hint">下载后运行安装包即可覆盖升级，你的表情和分类不会受影响。</div>
     </Modal>
   );

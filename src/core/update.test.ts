@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkForUpdate, compareVersions, parseRelease, parseVersion, pickAsset, plainNotes } from './update';
+import { checkForUpdate, compareVersions, parseRelease, parseVersion, pickAsset } from './update';
 
 describe('版本比较', () => {
   it('解析与比较', () => {
@@ -44,10 +44,6 @@ describe('发布信息', () => {
     expect(pickAsset(r.assets, 'mac', 'arm64')?.url).toBe('https://dl/arm.dmg');
     expect(pickAsset(r.assets, 'mac', 'x64')?.url).toBe('https://dl/x64.dmg');
     expect(pickAsset(r.assets, 'linux', 'x64')).toBeUndefined();
-  });
-
-  it('plainNotes 去掉 Markdown 标记', () => {
-    expect(plainNotes(release.body)).toBe('新增\n• 浮窗：Alt+Shift+E 呼出\n• 见 文档');
   });
 
   it('checkForUpdate：有新版本 / 没有发布 / 仓库未配置', async () => {

@@ -108,15 +108,3 @@ export async function checkForUpdate(
   return { current: currentVersion, latest, available: compareVersions(latest.version, currentVersion) > 0 };
 }
 
-/** 把 Markdown 发布说明简化成可直接显示的纯文本 */
-export function plainNotes(md: string): string {
-  return md
-    .replace(/\r/g, '')
-    .replace(/^#{1,6}\s*/gm, '')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/^\s*[-*]\s+/gm, '• ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}

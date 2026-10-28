@@ -579,21 +579,97 @@ kbd {
   margin-right: 6px;
 }
 
-/* 更新说明 */
+/* 更新说明（按 Markdown 结构渲染） */
 .dialog .notes {
   margin: 0;
-  max-height: 260px;
+  max-height: 300px;
   overflow-y: auto;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-radius: var(--radius-sm);
   background: var(--tile);
   border: 1px solid var(--line);
-  font: inherit;
   font-size: 12.5px;
   line-height: 1.6;
-  white-space: pre-wrap;
   word-break: break-word;
   user-select: text;
+}
+
+.notes h1,
+.notes h2,
+.notes h3 {
+  margin: 10px 0 4px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.notes h1 {
+  font-size: 15px;
+}
+
+.notes h2 {
+  font-size: 14px;
+}
+
+.notes h3 {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-transform: none;
+}
+
+.notes > :first-child {
+  margin-top: 0;
+}
+
+.notes > :last-child {
+  margin-bottom: 0;
+}
+
+.notes p {
+  margin: 4px 0 8px;
+  color: var(--ink);
+}
+
+.notes ul,
+.notes ol {
+  margin: 2px 0 8px;
+  padding-left: 1.4em;
+}
+
+.notes li {
+  margin: 3px 0;
+}
+
+.notes li > ul,
+.notes li > ol {
+  margin: 2px 0 2px;
+}
+
+.notes strong {
+  font-weight: 600;
+}
+
+.notes code {
+  font-family: ui-monospace, Consolas, 'SFMono-Regular', Menlo, monospace;
+  font-size: 11.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.notes a {
+  color: var(--ink);
+  text-decoration: underline dotted;
+}
+
+.notes a:hover {
+  text-decoration: underline;
+}
+
+.notes hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 8px 0;
 }
 
 /* 批量改名 */

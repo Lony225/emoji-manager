@@ -557,10 +557,11 @@ async function main() {
 
     // ---- 更新提示对话框（用一份假的发布信息渲染）
     console.log('\n更新提示');
-    await cdp.eval(`window.__uiStore.getState().openDialog({ kind: 'update', current: '1.0.0', release: { version: '9.9.9', tag: 'v9.9.9', name: '测试', notes: '## 新增\\n- 测试条目', url: 'https://example.com/rel', assets: [{ name: 'Emoji Manager-9.9.9-win-x64.exe', url: 'https://example.com/a.exe', size: 1024 }] } })`);
+    await cdp.eval(`window.__uiStore.getState().openDialog({ kind: 'update', current: '1.0.0', release: { version: '9.9.9', tag: 'v9.9.9', name: '测试', notes: '## 新增\\n- **测试条目**：按 \`Ctrl+V\`\\n  - 子项\\n- 见 [文档](https://example.com/doc)', url: 'https://example.com/rel', assets: [{ name: 'Emoji Manager-9.9.9-win-x64.exe', url: 'https://example.com/a.exe', size: 1024 }] } })`);
     await cdp.waitFor("document.querySelector('.dialog h3')?.textContent.includes('发现新版本 9.9.9') ? 1 : 0", 3000, '更新对话框');
     check('更新对话框显示版本号', true);
-    check('更新说明已转成纯文本', (await cdp.eval("document.querySelector('.dialog .notes')?.textContent")) === '新增\n• 测试条目');
+    const notesDom = await cdp.eval("(() => { const n = document.querySelector('.dialog .notes'); return n ? { h2: n.querySelector('h2')?.textContent, items: n.querySelectorAll(':scope > ul > li').length, bold: n.querySelector('li strong')?.textContent, code: n.querySelector('code')?.textContent, sub: n.querySelector('li ul li')?.textContent, link: n.querySelector('a')?.getAttribute('href'), pre: !!n.closest('pre') } : null; })()");
+    check('更新说明按 Markdown 结构渲染（标题 / 列表 / 加粗 / 代码 / 子列表 / 链接）', !!notesDom && notesDom.h2 === '新增' && notesDom.items === 2 && notesDom.bold === '测试条目' && notesDom.code === 'Ctrl+V' && notesDom.sub === '子项' && notesDom.link === 'https://example.com/doc' && !notesDom.pre, JSON.stringify(notesDom));
     check('按系统挑出了 Windows 安装包', /a\\.exe|1\\.0 KB|1024/.test(await cdp.eval("document.querySelector('.dialog .meta')?.textContent")) || (await cdp.eval("document.querySelector('.dialog .btn.primary')?.textContent")).includes('下载'));
     await cdp.eval("Array.from(document.querySelectorAll('.dialog footer button')).find(b => b.textContent.includes('跳过')).click()");
     assertEq('跳过这个版本被记住', await cdp.eval('window.__emojiStore.getState().settings.skippedVersion'), '9.9.9');
