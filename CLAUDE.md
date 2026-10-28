@@ -10,7 +10,8 @@
 - 发现工作区文件内容比 `HEAD` 旧（像被还原成旧快照），先用 `git checkout HEAD -- <文件>` 恢复，再把自己的改动合并上去，不要把旧内容提交回去。
 
 ## 验证
-- `pnpm typecheck`、`pnpm test`、`pnpm e2e:electron`（真实 Electron，占用 9333 / 8788 端口）。
+- `pnpm typecheck`、`pnpm test`、`pnpm e2e:electron`（真实 Electron，占用 9333 / 9334 / 8788 / 8789 端口）。
+- 改了内置更新（`electron/updater.ts`、安装包配置、CI 发布的文件）还要跑 `pnpm e2e:update`：打两个带 E2E 标识的真实安装包装到 `.e2e-tmp` 下的临时目录，走完「应用内下载 → 静默安装 → 自动重启」，跑完自动卸载。它不碰 `release/` 和本机正式安装的程序（`D:\EmojiManager`），但期间别手动打开测试版。
 - 打包：`pnpm exec electron-builder --win nsis portable --config.directories.output=<临时目录>`，再把安装包拷到 `release/`（用户常开着 `release/` 里的程序，直接在 `release/` 打包会被文件锁挡住）。
 - 安卓：`pnpm dist:android --dev` 打 apk 到 `release/`（文件名带 `-dev-日期`）。脚本自动用 `D:\Android\Android Studio\jbr`（JDK 21；系统 `JAVA_HOME` 是 17，编不了）和 `D:\Android\Sdk`，缺的 SDK 组件 Gradle 自动下载。签名密钥在 `G:\emoji-manager-keys\`（`android-release.jks` + `keystore.properties`，已复制一份到 `android/keystore.properties`，均不入库，丢了就不能覆盖安装了）。
 - 安卓真机 / 模拟器验证：`D:\Android\Sdk\platform-tools\adb.exe install -r <apk>`。本机有一个 Android 16 模拟器 `emoji36`（AVD 在 `D:\Android\avd`，启动要设 `ANDROID_AVD_HOME=D:/Android/avd`，`emulator -avd emoji36 -no-window -gpu swiftshader_indirect`，大约 1 分钟开机）。Git Bash 里 adb 的设备路径要加 `MSYS_NO_PATHCONV=1`，否则 `/sdcard/...` 会被改成 Windows 路径；`sdkmanager.bat` 的包名里有分号会被 cmd 拆开，用 `--package_file` 传。调试包（`--debug`）开了 WebView 调试，可以 `adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后用 CDP 在页面里执行 JS（`.e2e-tmp/android-test/cdp.mjs` 是现成的小工具）；正式包不打日志。

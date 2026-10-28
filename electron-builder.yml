@@ -24,7 +24,15 @@ protocols:
     schemes: [emojimanager]
 npmRebuild: false
 compression: normal
+# 内置更新（electron-updater）：据此在 Windows 包旁边生成 latest.yml（安装包的 sha512、大小）和 .blockmap（增量下载用），
+# 并把 resources/app-update.yml 写进安装包。实际上传由 CI 的 release 任务做（构建时传 --publish never），这里只是声明文件在 GitHub Releases
+publish:
+  provider: github
+  owner: Lony225
+  repo: emoji-manager
 
+# 安装包文件名里不能有空格：GitHub 会把附件名里的空格换成点，而 latest.yml 里记的是本地文件名，两者必须一致，
+# 所以直接写成 GitHub 上的样子（Emoji.Manager-…）。应用检查更新时按这个约定拼地址（src/core/update.ts）
 win:
   icon: build/icon.png
   target:
@@ -32,7 +40,7 @@ win:
       arch: [x64]
     - target: portable
       arch: [x64]
-  artifactName: ${productName}-${version}-win-${arch}.${ext}
+  artifactName: Emoji.Manager-${version}-win-${arch}.${ext}
 
 nsis:
   oneClick: false
@@ -44,7 +52,7 @@ nsis:
   language: '2052'
 
 portable:
-  artifactName: ${productName}-${version}-portable.${ext}
+  artifactName: Emoji.Manager-${version}-portable.${ext}
 
 mac:
   icon: build/icon.png
@@ -54,7 +62,7 @@ mac:
       arch: [x64, arm64]
     - target: zip
       arch: [x64, arm64]
-  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+  artifactName: Emoji.Manager-${version}-mac-${arch}.${ext}
   # 未签名：首次打开需在 系统设置 → 隐私与安全性 里点"仍要打开"
   identity: null
   hardenedRuntime: false

@@ -30,7 +30,7 @@
 - macOS 首次打开被拦下时，到「系统设置 → 隐私与安全性」里点「仍要打开」。
 - Android 需要允许「安装未知来源应用」；apk 用自己的签名密钥签名，以后的版本可以直接覆盖安装。
 
-应用启动时会检查 GitHub 上的新版本，有更新会弹窗提示并给出下载链接，不会自动安装；可在设置里关闭。连不上 GitHub 时会改经公共加速站或 jsDelivr 检查，弹窗里也列出各加速站的下载地址（名单在 [docs/download-mirrors.json](docs/download-mirrors.json)）。
+应用启动时会检查 GitHub 上的新版本，有更新会弹窗提示；可在设置里关闭。Windows 安装版点「下载并安装」就在应用里下载安装包（校验通过后静默安装、自动重启，表情和分类不受影响；没点安装的话退出应用时也会装上），便携版 / macOS / Android 弹窗里给的是下载链接。连不上 GitHub 时会改经公共加速站或 jsDelivr 检查，弹窗里列出各加速站线路（名单在 [docs/download-mirrors.json](docs/download-mirrors.json)），下载也可以走加速站，下载完按 GitHub 给出的校验值核对。
 
 ## 功能
 
@@ -145,6 +145,8 @@ git tag v1.0.1 && git push origin main v1.0.1
 ```
 
 GitHub Actions 会在 Windows 和 macOS 上构建桌面安装包、在 Ubuntu 上打安卓 apk，把它们连同 CHANGELOG 里对应的小节发布到 Releases。已安装的用户下次启动时会收到更新提示。
+
+Windows 包旁边会一起发布 `latest.yml`（安装包的 sha512）和 `.exe.blockmap`（增量下载用）：这是 Windows 安装版「下载并安装」要读的文件，缺了的话应用会提示到发布页手动下载。本地验证整个升级流程（装旧版 → 应用内下载 → 静默安装 → 自动重启）可以跑 `pnpm e2e:update`，它用带 E2E 标识的测试包装到临时目录，不碰正式安装。
 
 安卓 apk 用仓库 secrets 里的发布密钥签名（Settings → Secrets and variables → Actions），四个都要配：`ANDROID_KEYSTORE_BASE64`（jks 文件的 base64，Git Bash / Linux 下 `base64 -w0 android-release.jks` 的输出）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。没配齐时，推送到 main 只是跳过安卓任务并给出警告，打 `v*` 标签则直接失败，不会发出调试签名的包；打完包 CI 还会用 apksigner 核对签名证书和密钥一致才上传。密钥丢了就不能覆盖安装升级，务必另行备份。
 

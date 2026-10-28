@@ -25,7 +25,8 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { registerMemeIpc, stopWorker as stopMemeWorker } from './memes';
 import { defaultDeviceName, LanService } from './lan';
-import type { LanConfig, LanTarget } from '../src/platform/types';
+import { BuiltinUpdater, builtinUpdatesAvailable } from './updater';
+import type { LanConfig, LanTarget, UpdateDownloadRequest } from '../src/platform/types';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const MAX_DOWNLOAD = 100 * 1024 * 1024;
@@ -653,7 +654,8 @@ function webPreferences(role: 'main' | 'float'): Electron.WebPreferences {
     nodeIntegration: false,
     sandbox: true,
     spellcheck: false,
-    additionalArguments: [`--emoji-window-role=${role}`],
+    // 告诉 preload 这是哪个窗口，以及这种运行方式能不能在应用里直接安装更新
+    additionalArguments: [`--emoji-window-role=${role}`, ...(builtinUpdatesAvailable() ? ['--emoji-updates=builtin'] : [])],
   };
 }
 
@@ -809,6 +811,7 @@ function toggleFloat(): void {
 
 let pendingDeepLink: string | null = null;
 let lanService: LanService | null = null;
+const updater = new BuiltinUpdater({ broadcast: (channel, payload) => broadcast(channel, payload) });
 
 function extractDeepLink(argv: string[]): string | null {
   return argv.find((a) => typeof a === 'string' && a.toLowerCase().startsWith(`${PROTOCOL}://`)) ?? null;
@@ -1010,9 +1013,17 @@ function registerIpc(): void {
     await shell.openPath(libraryDir);
   });
   ipcMain.handle('app:relaunch', async () => {
+    // 应用马上自己重新启动，这次退出不要顺便装更新（安装程序会把刚启动的进程杀掉）
+    updater.suppressInstallOnQuit();
     app.relaunch();
     app.exit(0);
   });
+
+  // 内置更新：下载 / 安装在主进程完成，进度广播给所有窗口
+  ipcMain.handle('update:state', async () => updater.current());
+  ipcMain.handle('update:download', async (_e, req: UpdateDownloadRequest) => updater.download(req));
+  ipcMain.handle('update:cancel', async () => updater.cancel());
+  ipcMain.handle('update:install', async () => updater.installNow());
   ipcMain.handle('window:bg', async (e, color: unknown) => {
     if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color)) throw new Error('无效的颜色');
     BrowserWindow.fromWebContents(e.sender)?.setBackgroundColor(color);
@@ -1122,6 +1133,9 @@ if (!gotLock) {
   app.on('before-quit', () => {
     quitting = true;
   });
+
+  // 退出前启动已下载好的更新的安装程序（页面已经把资料写完了）
+  app.on('quit', (_e, exitCode) => updater.onQuit(exitCode));
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();

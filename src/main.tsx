@@ -14,6 +14,7 @@ import { useUiStore } from './ui/uiStore';
 import * as actions from './ui/actions';
 import * as lanActions from './ui/lan';
 import { useLanStore } from './ui/lanStore';
+import { useUpdateStore } from './ui/updateStore';
 import { runUpdateCheck } from './ui/update';
 
 declare global {
@@ -25,6 +26,7 @@ declare global {
     __runUpdateCheck: typeof runUpdateCheck;
     __lanStore: typeof useLanStore;
     __lanActions: typeof lanActions;
+    __updateStore: typeof useUpdateStore;
   }
 }
 window.__emojiStore = useLibraryStore;
@@ -33,6 +35,7 @@ window.__emojiActions = actions;
 window.__runUpdateCheck = runUpdateCheck;
 window.__lanStore = useLanStore;
 window.__lanActions = lanActions;
+window.__updateStore = useUpdateStore;
 
 // 同一份页面既是主窗口也是浮窗：由主进程启动时告诉我们是哪一个
 const Root = platform.windowRole === 'float' ? FloatApp : App;

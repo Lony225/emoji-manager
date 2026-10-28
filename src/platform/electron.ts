@@ -18,6 +18,7 @@ export function createElectronPlatform(bridge: EmojiBridge): Platform {
       multiFolderPick: true,
       memeTemplates: true,
       lanSync: true,
+      installUpdates: bridge.installUpdates,
     },
     async init() {},
     readText: (rel) => bridge.readText(rel),
@@ -93,6 +94,12 @@ export function createElectronPlatform(bridge: EmojiBridge): Platform {
     memeGenerate: (key, images, texts, options) => bridge.memeGenerate(key, images, texts, options),
     memeDownloadFonts: () => bridge.memeDownloadFonts(),
     onMemeProgress: (cb) => bridge.onMemeProgress(cb),
+
+    updateState: () => bridge.updateState(),
+    updateDownload: (req) => bridge.updateDownload(req),
+    updateCancel: () => bridge.updateCancel(),
+    updateInstall: () => bridge.updateInstall(),
+    onUpdateState: (cb) => bridge.onUpdateState(cb),
 
     lanStart: (config) => bridge.lanStart(config),
     lanStop: () => bridge.lanStop(),

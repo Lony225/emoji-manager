@@ -146,6 +146,48 @@ export function hostOf(url: string): string {
   }
 }
 
+// ---------------------------------------------------------------- 内置更新（主进程用 electron-updater 下载安装；这里是和它配合的纯函数）
+
+/**
+ * 安装包所在目录的地址（以 / 结尾），electron-updater 到这个目录下读 latest.yml 和安装包。
+ * 走加速站时整个目录地址加前缀；解析不了返回 null
+ */
+export function installerBaseUrl(assetUrl: string, accelerator = ''): string | null {
+  try {
+    const dir = new URL('.', assetUrl).href;
+    return accelerator ? accelerated(accelerator, dir) : dir;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 把 electron-updater 的英文报错翻成能给用户看的一句话。
+ * 传进来的可能是 Error（带 code），也可能是它日志里的一段文字（含堆栈、响应头）。
+ */
+export function describeUpdateError(e: unknown): string {
+  const text = e instanceof Error ? e.message : String(e);
+  const code = isRecord(e) && typeof e.code === 'string' ? e.code : '';
+  // 第一行；日志里的报错前面会套着一到两层 "Error: "
+  const raw = text.split('\n')[0].trim();
+  const first = raw.replace(/^(?:\w*Error:\s*)+/, '');
+  if (first === 'cancelled' || first === '已取消') return '已取消';
+  if (code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' || /Cannot find channel/.test(first)) {
+    return '这个版本没有提供内置更新所需的文件（latest.yml），请到发布页下载安装包';
+  }
+  if (code === 'ERR_CHECKSUM_MISMATCH' || /checksum mismatch/i.test(first)) return '下载的文件校验不通过（可能是加速站返回了错误的内容），请换一个下载地址再试';
+  if (code === 'ERR_UPDATER_INVALID_VERSION' || /valid semver version/.test(first)) return '更新文件里的版本号无法识别';
+  const http = /^HTTP_ERROR_(\d+)$/.exec(code) ?? /^(?:\w*Error:\s*)*HttpError: (\d{3})\b/.exec(raw) ?? /\bHTTP_ERROR_(\d{3})\b/.exec(raw);
+  if (http) return http[1] === '404' ? '下载地址不存在（HTTP 404）' : `下载服务器返回 HTTP ${http[1]}`;
+  if (/ENOTFOUND|ERR_NAME_NOT_RESOLVED/.test(first)) return '域名无法解析，请检查网络';
+  if (/ECONNREFUSED|ECONNRESET|ETIMEDOUT|ERR_CONNECTION|ERR_INTERNET_DISCONNECTED|socket hang up|timeout|aborted/i.test(first)) {
+    return '无法连接到下载服务器，可以换一个下载地址再试';
+  }
+  if (/ENOENT/.test(first)) return `找不到文件：${first}`;
+  if (/EBUSY|EPERM|EACCES|ENOSPC/.test(first)) return `无法写入下载目录：${first}`;
+  return first.slice(0, 160) || '未知错误';
+}
+
 /** 校验远端的加速站名单：只认 https://主机/（可带路径）的前缀，最多 12 个；不合格返回 null */
 export function normalizeAccelerators(json: unknown): string[] | null {
   if (!isRecord(json) || !Array.isArray(json.accelerators)) return null;

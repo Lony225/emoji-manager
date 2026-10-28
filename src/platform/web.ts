@@ -110,6 +110,7 @@ export function createWebPlatform(): Platform {
       multiFolderPick: false,
       memeTemplates: false,
       lanSync: false,
+      installUpdates: false,
     },
     async init() {
       db = await openDb();
@@ -340,6 +341,17 @@ export function createWebPlatform(): Platform {
     onMemeProgress() {
       return () => undefined;
     },
+    async updateState() {
+      return { phase: 'idle', version: '', percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 };
+    },
+    async updateDownload() {
+      throw new Error('浏览器版不支持内置更新');
+    },
+    async updateCancel() {},
+    async updateInstall() {
+      throw new Error('浏览器版不支持内置更新');
+    },
+    onUpdateState() {},
     async lanStart() {
       throw new Error('浏览器版不支持局域网同步');
     },

@@ -193,6 +193,7 @@ export function createCapacitorPlatform(): Platform {
       multiFolderPick: false,
       memeTemplates: false,
       lanSync: true,
+      installUpdates: false,
     },
     init,
 
@@ -365,6 +366,18 @@ export function createCapacitorPlatform(): Platform {
     onMemeProgress() {
       return () => undefined;
     },
+
+    async updateState() {
+      return { phase: 'idle', version: '', percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 };
+    },
+    async updateDownload() {
+      throw new Error('安卓版不支持内置更新，请下载 apk 覆盖安装');
+    },
+    async updateCancel() {},
+    async updateInstall() {
+      throw new Error('安卓版不支持内置更新');
+    },
+    onUpdateState() {},
 
     async lanStart(config) {
       await init();

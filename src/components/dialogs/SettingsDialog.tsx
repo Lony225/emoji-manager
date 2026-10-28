@@ -5,12 +5,13 @@ import type { CopyMode, Theme } from '../../core/types';
 import { isMobile, platform } from '../../platform';
 import { errorMessage } from '../../core/subscription/sync';
 import { openExportDialog, pickAndImportPackage } from '../../ui/actions';
-import { runUpdateCheck } from '../../ui/update';
+import { cancelUpdateDownload, installUpdate, runUpdateCheck } from '../../ui/update';
 import { SUBSCRIPTIONS_ENABLED } from '../../core/features';
 import { Modal } from '../Dialog';
 import { HotkeyInput } from '../HotkeyInput';
 import { Icon } from '../../ui/icons';
 import { useLanStore } from '../../ui/lanStore';
+import { useUpdateStore } from '../../ui/updateStore';
 
 const THEMES: { key: Theme; label: string }[] = [
   { key: 'system', label: '跟随系统' },
@@ -32,6 +33,7 @@ export function SettingsDialog() {
   const lanError = useLanStore((s) => s.startError);
   const lanPairs = useLanStore((s) => s.identity.pairs.length);
   const lanOnline = useLanStore((s) => s.devices.length);
+  const pendingUpdate = useUpdateStore((s) => s.state);
   const caps = platform.capabilities;
 
   useEffect(() => {
@@ -275,10 +277,30 @@ export function SettingsDialog() {
         </div>
       </div>
 
+      {caps.installUpdates && pendingUpdate.phase === 'downloaded' && (
+        <div className="setting">
+          <div className="text">
+            新版本 {pendingUpdate.version} 已下载好
+            <small>退出应用时会自动安装，也可以现在就装：安装完会自动重新启动。</small>
+          </div>
+          <div className="row">
+            <button className="btn sm" onClick={() => void cancelUpdateDownload()} title="删掉已下载的安装包，退出时不再安装">
+              不装了
+            </button>
+            <button className="btn sm primary" onClick={() => void installUpdate()}>
+              立即安装并重启
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="setting">
         <div className="text">
           启动时检查新版本
-          <small>从 GitHub 发布页读取最新版本号，有更新时弹窗提示，不会自动安装。</small>
+          <small>
+            从 GitHub 发布页读取最新版本号，有更新时弹窗提示
+            {caps.installUpdates ? '，确认后在应用里下载并安装，不会不经确认就升级。' : '，不会自动安装。'}
+          </small>
         </div>
         <div className="row">
           <input

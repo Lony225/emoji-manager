@@ -191,6 +191,38 @@ export interface PlatformCapabilities {
   memeTemplates: boolean;
   /** 局域网同步：UDP 发现 + 内置 HTTP 服务（桌面端、安卓） */
   lanSync: boolean;
+  /** 内置更新：在应用里下载新版本安装包并自动安装（Windows 安装版） */
+  installUpdates: boolean;
+}
+
+// ---------------------------------------------------------------- 内置更新
+
+export type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
+
+/** 主进程里内置更新的进度（所有窗口共享一份） */
+export interface UpdateState {
+  phase: UpdatePhase;
+  /** 正在下载 / 已下载的版本号 */
+  version: string;
+  percent: number;
+  transferred: number;
+  total: number;
+  bytesPerSecond: number;
+  /** phase 为 error 时的原因 */
+  error?: string;
+  /** 从哪个主机下载（显示用） */
+  via?: string;
+}
+
+export interface UpdateDownloadRequest {
+  /** 安装包所在目录的地址（以 / 结尾，可带加速站前缀），该目录下须有 latest.yml */
+  baseUrl: string;
+  /** 要装的版本号，和 latest.yml 里的核对 */
+  version: string;
+  /** 显示用：经哪个站点下载 */
+  via?: string;
+  /** GitHub API 给出的安装包 SHA-256（十六进制），有的话下载完再核对一次 */
+  sha256?: string;
 }
 
 /**
@@ -299,6 +331,19 @@ export interface Platform {
   memeDownloadFonts(): Promise<void>;
   /** 字体 / 素材下载进度；返回取消订阅的函数 */
   onMemeProgress(cb: (p: MemeProgress) => void): () => void;
+
+  // —— 内置更新（Windows 安装版；其他平台这几个方法会报错，先看 capabilities.installUpdates）——
+  /** 当前的下载状态 */
+  updateState(): Promise<UpdateState>;
+  /**
+   * 读取 baseUrl 下的 latest.yml，下载并校验该版本的安装包（同一版本已下载过的直接返回）。
+   * 返回最终状态：downloaded 为成功；否则 error 字段是原因（取消时为“已取消”）。进度走 onUpdateState
+   */
+  updateDownload(req: UpdateDownloadRequest): Promise<UpdateState>;
+  updateCancel(): Promise<void>;
+  /** 退出应用并运行已下载的安装包，装完自动重新启动 */
+  updateInstall(): Promise<void>;
+  onUpdateState(cb: (state: UpdateState) => void): void;
 
   // —— 局域网同步（协议逻辑在 src/core/lan，这里只是网络）——
   /** 启动发现广播和 HTTP 服务；返回服务端口 */

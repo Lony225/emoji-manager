@@ -5,9 +5,11 @@ import {
   changelogSection,
   checkForUpdate,
   compareVersions,
+  describeUpdateError,
   firstSuccess,
   githubAssetName,
   hostOf,
+  installerBaseUrl,
   loadAccelerators,
   mirrorListUrl,
   normalizeAccelerators,
@@ -200,5 +202,36 @@ describe('加速站', () => {
     expect(changelogSection(text, '1.3.0')).toBe('### 新功能\n\n- 模板');
     expect(changelogSection(text, '1.2.0')).toBe('- 旧');
     expect(changelogSection(text, '9.9.9')).toBe('');
+  });
+});
+
+describe('内置更新', () => {
+  it('installerBaseUrl：安装包所在目录，可加加速站前缀', () => {
+    const asset = 'https://github.com/o/r/releases/download/v1.5.0/Emoji.Manager-1.5.0-win-x64.exe';
+    expect(installerBaseUrl(asset)).toBe('https://github.com/o/r/releases/download/v1.5.0/');
+    expect(installerBaseUrl(asset, 'https://ghfast.top/')).toBe('https://ghfast.top/https://github.com/o/r/releases/download/v1.5.0/');
+    expect(installerBaseUrl('nonsense')).toBeNull();
+    // 加速站前缀 + 完整地址在 URL 解析下仍能正确拼出 latest.yml 和安装包的地址
+    const base = installerBaseUrl(asset, 'https://gh-proxy.com/')!;
+    expect(new URL('latest.yml', base).href).toBe('https://gh-proxy.com/https://github.com/o/r/releases/download/v1.5.0/latest.yml');
+    expect(new URL('Emoji.Manager-1.5.0-win-x64.exe', base).href).toBe(`https://gh-proxy.com/${asset}`);
+  });
+
+  it('describeUpdateError：把 electron-updater 的报错翻成一句话', () => {
+    const withCode = (message: string, code: string) => Object.assign(new Error(message), { code });
+    expect(describeUpdateError(new Error('cancelled'))).toBe('已取消');
+    expect(describeUpdateError(withCode('Cannot find channel "latest.yml" update info: HttpError: 404', 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND'))).toMatch(/latest\.yml/);
+    expect(describeUpdateError(withCode('sha512 checksum mismatch, expected a, got b', 'ERR_CHECKSUM_MISMATCH'))).toMatch(/校验不通过/);
+    expect(describeUpdateError(new Error('checksum mismatch: sha256'))).toMatch(/校验不通过/);
+    expect(describeUpdateError(withCode('whatever', 'HTTP_ERROR_404'))).toBe('下载地址不存在（HTTP 404）');
+    expect(describeUpdateError(withCode('whatever', 'HTTP_ERROR_503'))).toBe('下载服务器返回 HTTP 503');
+    // 日志里的文字：带 Error: 前缀、堆栈和响应头
+    expect(describeUpdateError('Error: HttpError: 404 Not Found\nHeaders: {"a":1}\n    at x')).toBe('下载地址不存在（HTTP 404）');
+    expect(describeUpdateError('Error: Error: getaddrinfo ENOTFOUND ghfast.top\n    at x')).toMatch(/域名无法解析/);
+    expect(describeUpdateError(new Error('net::ERR_CONNECTION_RESET'))).toMatch(/无法连接/);
+    expect(describeUpdateError(new Error('socket hang up'))).toMatch(/无法连接/);
+    expect(describeUpdateError(withCode('bad', 'ERR_UPDATER_INVALID_VERSION'))).toMatch(/版本号/);
+    expect(describeUpdateError(new Error('更新文件里的版本（1.0.0）和要安装的版本（2.0.0）不一致'))).toBe('更新文件里的版本（1.0.0）和要安装的版本（2.0.0）不一致');
+    expect(describeUpdateError('')).toBe('未知错误');
   });
 });

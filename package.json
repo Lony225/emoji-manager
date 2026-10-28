@@ -1,7 +1,7 @@
 {
   "name": "emoji-manager",
   "productName": "Emoji Manager",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "跨平台表情包管理器：分类、标签、订阅同步",
   "author": "LONY",
   "license": "MIT",
@@ -25,6 +25,7 @@
     "samples": "node scripts/make-samples.mjs",
     "serve:samples": "node scripts/serve-samples.mjs",
     "e2e:electron": "node scripts/e2e-electron.mjs",
+    "e2e:update": "node scripts/e2e-update-install.mjs",
     "release:notes": "node scripts/release-notes.mjs"
   },
   "dependencies": {
@@ -47,6 +48,7 @@
     "@vitejs/plugin-react": "^6.0.0",
     "electron": "^45.0.0",
     "electron-builder": "^26.0.0",
+    "electron-updater": "^6.8.11",
     "esbuild": "^0.28.0",
     "typescript": "~5.9.0",
     "vite": "^8.0.0",

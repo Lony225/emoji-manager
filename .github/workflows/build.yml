@@ -34,11 +34,14 @@ jobs:
       - run: pnpm ${{ matrix.script }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # latest.yml（安装包的校验值）和 .exe.blockmap（增量下载）是 Windows 安装版内置更新要读的，随 Release 一起发布
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}
           path: |
             release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
             release/*.dmg
             release/*.zip
           if-no-files-found: error
@@ -180,6 +183,8 @@ jobs:
           body_path: RELEASE_NOTES.md
           files: |
             artifacts/**/*.exe
+            artifacts/**/*.exe.blockmap
+            artifacts/**/latest.yml
             artifacts/**/*.dmg
             artifacts/**/*.zip
             artifacts/**/*.apk

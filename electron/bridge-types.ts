@@ -14,6 +14,8 @@ import type {
   MemeResult,
   MemeStatus,
   MemeTemplate,
+  UpdateDownloadRequest,
+  UpdateState,
   UsageMap,
   WindowRole,
 } from '../src/platform/types';
@@ -37,6 +39,8 @@ export interface EmojiBridge {
   /** CPU 架构（x64 / arm64），用于挑选对应的安装包 */
   arch: string;
   windowRole: WindowRole;
+  /** 这种运行方式（Windows 安装版）能在应用里下载安装新版本 */
+  installUpdates: boolean;
   readText(rel: string): Promise<string | null>;
   writeText(rel: string, text: string): Promise<void>;
   readBytes(rel: string): Promise<Uint8Array | null>;
@@ -94,6 +98,13 @@ export interface EmojiBridge {
   memeGenerate(key: string, images: MemeImageInput[], texts: string[], options: MemeOptionValues): Promise<MemeResult>;
   memeDownloadFonts(): Promise<void>;
   onMemeProgress(cb: (p: MemeProgress) => void): () => void;
+
+  // —— 内置更新 ——
+  updateState(): Promise<UpdateState>;
+  updateDownload(req: UpdateDownloadRequest): Promise<UpdateState>;
+  updateCancel(): Promise<void>;
+  updateInstall(): Promise<void>;
+  onUpdateState(cb: (state: UpdateState) => void): void;
 
   // —— 局域网同步 ——
   lanStart(config: LanConfig): Promise<{ port: number }>;

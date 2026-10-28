@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { EmojiBridge } from './bridge-types';
-import type { LanDevice, LanIncoming, LanJsonResponse, MemeProgress, UsageMap } from '../src/platform/types';
+import type { LanDevice, LanIncoming, LanJsonResponse, MemeProgress, UpdateState, UsageMap } from '../src/platform/types';
 
 function cleanError(e: unknown): Error {
   const msg = e instanceof Error ? e.message : String(e);
@@ -20,11 +20,14 @@ const os: EmojiBridge['os'] =
 
 // 主进程通过 webPreferences.additionalArguments 告诉我们这是哪个窗口
 const windowRole: EmojiBridge['windowRole'] = process.argv.includes('--emoji-window-role=float') ? 'float' : 'main';
+// 以及这种运行方式能不能在应用里直接安装更新（Windows 安装版才行）
+const installUpdates = process.argv.includes('--emoji-updates=builtin');
 
 const bridge: EmojiBridge = {
   os,
   arch: process.arch,
   windowRole,
+  installUpdates,
   readText: (rel) => invoke('fs:readText', rel),
   writeText: (rel, text) => invoke('fs:writeText', rel, text),
   readBytes: (rel) => invoke('fs:readBytes', rel),
@@ -94,6 +97,14 @@ const bridge: EmojiBridge = {
     const listener = (_e: Electron.IpcRendererEvent, p: MemeProgress) => cb(p);
     ipcRenderer.on('memes:progress', listener);
     return () => ipcRenderer.removeListener('memes:progress', listener);
+  },
+
+  updateState: () => invoke('update:state'),
+  updateDownload: (req) => invoke('update:download', req),
+  updateCancel: () => invoke('update:cancel'),
+  updateInstall: () => invoke('update:install'),
+  onUpdateState(cb) {
+    ipcRenderer.on('update:state', (_e, state: UpdateState) => cb(state));
   },
 
   lanStart: (config) => invoke('lan:start', config),

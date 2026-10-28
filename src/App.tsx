@@ -35,7 +35,7 @@ import { BulkRenameDialog } from './components/dialogs/BulkRenameDialog';
 import { MakerDialog } from './components/dialogs/MakerDialog';
 import { MemeTemplatesDialog } from './components/dialogs/MemeTemplatesDialog';
 import { formatHotkey } from './components/HotkeyInput';
-import { runUpdateCheck } from './ui/update';
+import { installUpdateListener, runUpdateCheck } from './ui/update';
 import { installDeepLinkHandler } from './ui/deeplink';
 import { SUBSCRIPTIONS_ENABLED } from './core/features';
 import { installThumbWorker } from './ui/thumbs';
@@ -222,6 +222,7 @@ export function App() {
     installThumbWorker();
     installMobileHandlers();
     installLanSync();
+    installUpdateListener();
     if (!useLibraryStore.getState().settings.checkUpdatesOnStart) return;
     const timer = setTimeout(() => void runUpdateCheck(false), 4000);
     return () => clearTimeout(timer);

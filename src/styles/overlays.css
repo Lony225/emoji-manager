@@ -716,6 +716,21 @@ kbd {
   font-weight: 700;
 }
 
+/* 更新弹窗：内置更新的下载进度（Windows 安装版） */
+.dialog .update-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dialog .update-progress .progress {
+  width: 100%;
+}
+
+.dialog .update-progress.downloaded .hint {
+  color: var(--success);
+}
+
 /* 批量改名 */
 .rename-form .field.grow {
   flex: 1;

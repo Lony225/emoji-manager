@@ -1,13 +1,15 @@
 // 端到端测试：启动真实的 Electron，通过 Chrome DevTools 协议驱动界面。
 // 流程：导入 → 添加订阅（单包 + 多包）→ 搜索/标签筛选 → 点击复制 → 收藏 → 右键菜单 → 截图
 //       → 关闭窗口（验证关闭前落盘）→ 重新启动（验证数据持久化与图片显示）
+//       → 内置更新（伪装的发布目录：下载、校验、取消、出错）→ 局域网同步（第二个实例）
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSampleServer } from './serve-samples.mjs';
+import { Cdp, assertEq, check, findPage, results, sha256Hex, sleep, waitForFile, waitUntil, writeFakeInstaller, writeLatestYml } from './e2e-lib.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,108 +17,9 @@ const PORT = 9333;
 /** 局域网同步测试里第二个实例的调试端口 */
 const PORT2 = 9334;
 const SAMPLE_PORT = 8788;
+/** 伪装的 GitHub Releases（内置更新测试） */
+const UPDATE_PORT = 8789;
 const args = new Set(process.argv.slice(2));
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let failures = 0;
-function check(name, ok, detail = '') {
-  console.log(`${ok ? '  ✓' : '  ✗'} ${name}${detail ? `  (${detail})` : ''}`);
-  if (!ok) failures++;
-}
-function assertEq(name, actual, expected) {
-  check(name, actual === expected, `实际 ${JSON.stringify(actual)}，期望 ${JSON.stringify(expected)}`);
-}
-async function waitForFile(p, timeoutMs) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < timeoutMs) {
-    if (existsSync(p)) return true;
-    await sleep(100);
-  }
-  return existsSync(p);
-}
-
-// ---------------------------------------------------------------- CDP 客户端
-
-class Cdp {
-  constructor(ws) {
-    this.ws = ws;
-    this.seq = 0;
-    this.pending = new Map();
-    ws.addEventListener('message', (ev) => {
-      const msg = JSON.parse(String(ev.data));
-      if (msg.id && this.pending.has(msg.id)) {
-        const { resolve, reject } = this.pending.get(msg.id);
-        this.pending.delete(msg.id);
-        if (msg.error) reject(new Error(msg.error.message));
-        else resolve(msg.result);
-      }
-    });
-    // 连接断开（比如 Browser.close 之后）时，让所有等待中的请求结束，不要挂死
-    ws.addEventListener('close', () => {
-      for (const { reject } of this.pending.values()) reject(new Error('调试连接已关闭'));
-      this.pending.clear();
-    });
-  }
-  static async connect(url) {
-    const ws = new WebSocket(url);
-    await new Promise((resolve, reject) => {
-      ws.addEventListener('open', resolve, { once: true });
-      ws.addEventListener('error', () => reject(new Error('无法连接调试端口')), { once: true });
-    });
-    return new Cdp(ws);
-  }
-  send(method, params = {}) {
-    const id = ++this.seq;
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.ws.send(JSON.stringify({ id, method, params }));
-    });
-  }
-  /** 在页面里执行代码；expression 可以是返回 Promise 的表达式 */
-  async eval(expression) {
-    const r = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-    if (r.exceptionDetails) {
-      throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
-    }
-    return r.result.value;
-  }
-  async waitFor(expression, timeoutMs = 15000, label = expression) {
-    const t0 = Date.now();
-    for (;;) {
-      let v;
-      try {
-        v = await this.eval(expression);
-      } catch {
-        v = undefined;
-      }
-      if (v) return v;
-      if (Date.now() - t0 > timeoutMs) throw new Error(`等待超时：${label}`);
-      await sleep(150);
-    }
-  }
-  close() {
-    this.ws.close();
-  }
-}
-
-/** 找到主窗口（无 hash）或浮窗（#float）的页面 */
-async function findPage(role = 'main', port = PORT) {
-  const t0 = Date.now();
-  for (;;) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/json/list`);
-      const list = await res.json();
-      const page = list.find(
-        (t) => t.type === 'page' && t.url.startsWith('app://') && (role === 'float') === t.url.endsWith('#float'),
-      );
-      if (page) return page;
-    } catch {
-      /* 还没起来 */
-    }
-    if (Date.now() - t0 > 30000) throw new Error(`Electron ${role === 'float' ? '浮窗' : '主窗口'} 30 秒内没有出现`);
-    await sleep(250);
-  }
-}
 
 // ---------------------------------------------------------------- 启动 / 关闭
 
@@ -158,6 +61,7 @@ async function main() {
   }
 
   const { server, url: sampleUrl } = await createSampleServer(SAMPLE_PORT);
+  let updateServer = null;
   const dataDir = path.join(ROOT, '.e2e-tmp', String(Date.now()));
   mkdirSync(dataDir, { recursive: true });
   console.log(`数据目录：${dataDir}`);
@@ -916,8 +820,9 @@ async function main() {
     // 再次呼出 → 搜索框被清空；Esc 隐藏
     await cdp.eval('window.emojiBridge.showFloat()');
     await fcdp.waitFor('document.visibilityState === "visible"', 5000, '浮窗再次显示');
-    await sleep(100);
-    assertEq('再次呼出时搜索框已清空', await fcdp.eval("document.querySelector('.float .search input').value"), '');
+    // 清空搜索框的 float:shown 消息在窗口显示之后才到，等一会儿
+    const cleared = await fcdp.waitFor("document.querySelector('.float .search input').value === '' ? 1 : 0", 3000, '搜索框清空').catch(() => 0);
+    check('再次呼出时搜索框已清空', cleared === 1, await fcdp.eval("document.querySelector('.float .search input').value"));
     await fcdp.eval("document.querySelector('.float .search input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
     const hiddenByEsc = await fcdp.waitFor('document.visibilityState === "hidden" ? 1 : 0', 5000, 'Esc 隐藏').catch(() => 0);
     check('Esc 隐藏浮窗', hiddenByEsc === 1);
@@ -958,9 +863,26 @@ async function main() {
     check('备份文件存在', existsSync(libFile + '.bak'));
     check('窗口位置已记住', existsSync(path.join(dataDir, 'window-state.json')));
 
-    // ---- 第二次启动：数据持久化
+    // ---- 第二次启动：数据持久化（这次带上内置更新的测试配置：伪装的发布目录 + 独立的更新缓存目录）
     console.log('\n第二次启动');
-    proc = launch(dataDir, memeEnv);
+    const updateDir = path.join(ROOT, '.e2e-tmp', 'update-feed');
+    rmSync(updateDir, { recursive: true, force: true });
+    const installerName = 'Emoji.Manager-9.9.9-win-x64.exe';
+    const fakeInstaller = writeFakeInstaller(path.join(updateDir, installerName), 6 * 1024 * 1024);
+    const feed = writeLatestYml(updateDir, '9.9.9', fakeInstaller);
+    // bad/：latest.yml 里的校验值是错的；slow/：限速发送，用来测取消
+    for (const sub of ['bad', 'slow']) {
+      mkdirSync(path.join(updateDir, sub), { recursive: true });
+      copyFileSync(fakeInstaller, path.join(updateDir, sub, installerName));
+    }
+    writeLatestYml(path.join(updateDir, 'bad'), '9.9.9', fakeInstaller, { sha512: createHash('sha512').update('不是这个文件').digest('base64') });
+    writeLatestYml(path.join(updateDir, 'slow'), '9.9.9', fakeInstaller);
+    const updateFeed = await createSampleServer(UPDATE_PORT, '127.0.0.1', updateDir, { slow: /^\/slow\//, chunk: 128 * 1024, delayMs: 150 });
+    updateServer = updateFeed.server;
+    const updateUrl = updateFeed.url;
+    const updateConfigFile = path.join(ROOT, '.e2e-tmp', 'dev-app-update.yml');
+    writeFileSync(updateConfigFile, `provider: generic\nurl: ${updateUrl}/\nupdaterCacheDirName: emoji-manager-e2e-updater\n`);
+    proc = launch(dataDir, { ...memeEnv, EMOJI_UPDATE_CONFIG: updateConfigFile });
     page = await findPage();
     cdp = await Cdp.connect(page.webSocketDebuggerUrl);
     await cdp.waitFor('window.__emojiStore && window.__emojiStore.getState().loaded', 20000, '资料加载完成');
@@ -993,6 +915,72 @@ async function main() {
     check('空掉的“猫猫”分类被删除', !afterRemove.cats.includes('猫猫'), JSON.stringify(afterRemove.cats));
     check('仍有本地表情的“狗狗”及其父分类保留', afterRemove.cats.includes('狗狗') && afterRemove.cats.includes('示例：表情合集'), JSON.stringify(afterRemove.cats));
     assertEq('保留的分类不再关联已删除的订阅', afterRemove.linked, 1);
+
+    // ---- 内置更新：伪装一个发布目录（latest.yml + 假安装包），验证下载、校验、取消、出错和“不装了”。
+    //      真正运行安装程序要用打包后的安装版验证：scripts/e2e-update-install.mjs
+    if (process.platform === 'win32') {
+      console.log('\n内置更新');
+      const cacheDir = path.join(process.env.LOCALAPPDATA, 'emoji-manager-e2e-updater');
+      const pendingFile = path.join(cacheDir, 'pending', installerName);
+      check('安装版才有的内置更新能力已开启（EMOJI_UPDATE_CONFIG）', (await cdp.eval('window.emojiBridge.installUpdates')) === true);
+      // 开弹窗：主按钮变成“下载并安装”
+      await cdp.eval(`window.__uiStore.getState().openDialog({ kind: 'update', current: '1.0.0', release: { version: '9.9.9', tag: 'v9.9.9', name: '测试', notes: '', url: '${updateUrl}/rel', assets: [{ name: '${installerName}', url: '${updateUrl}/${installerName}', size: ${feed.size}, digest: 'sha256:${feed.sha256}' }] } })`);
+      await cdp.waitFor("document.querySelector('.dialog h3')?.textContent.includes('发现新版本 9.9.9') ? 1 : 0", 3000, '更新对话框');
+      assertEq('安装版的主按钮是「下载并安装」', await cdp.eval("document.querySelector('.dialog .btn.primary')?.textContent.trim()"), '下载并安装');
+      check('说明文字提到自动安装', /自动安装并重新启动/.test(await cdp.eval("document.querySelector('.dialog .body')?.textContent ?? ''")));
+      await cdp.eval("document.querySelector('.dialog .btn.primary').click()");
+      const dl = await cdp.waitFor("(() => { const s = window.__updateStore.getState().state; return s.phase === 'downloaded' || s.phase === 'error' ? JSON.stringify(s) : 0; })()", 60000, '下载完成');
+      const dlState = JSON.parse(dl);
+      check('下载完成并通过校验', dlState.phase === 'downloaded' && dlState.version === '9.9.9' && dlState.percent === 100 && dlState.via === 'github.com', dl);
+      check('安装包已存到更新缓存目录且内容正确', existsSync(pendingFile) && sha256Hex(pendingFile) === feed.sha256, pendingFile);
+      assertEq('下载完成后主按钮变成「立即安装并重启」', await cdp.eval("document.querySelector('.dialog .btn.primary')?.textContent.trim()"), '立即安装并重启');
+      check('弹窗里说明已下载并校验', /已下载并通过校验/.test(await cdp.eval("document.querySelector('.dialog .update-progress')?.textContent ?? ''")));
+      check('弹窗里高亮了用过的线路', (await cdp.eval("document.querySelector('.dialog .mirrors a.chip.active')?.textContent.trim() ?? ''")).includes('GitHub'));
+      const updShot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+      writeFileSync(path.join(ROOT, '.e2e-tmp', 'screenshot-update.png'), Buffer.from(updShot.data, 'base64'));
+      console.log(`  截图：${path.join(ROOT, '.e2e-tmp', 'screenshot-update.png')}`);
+      // 同一版本再下载：直接返回已下载状态，不重新下
+      const again = await cdp.eval(`window.emojiBridge.updateDownload({ baseUrl: '${updateUrl}/', version: '9.9.9' })`);
+      check('同一版本不重复下载', again.phase === 'downloaded' && again.percent === 100, JSON.stringify(again));
+      await cdp.eval('window.__uiStore.getState().closeDialog()');
+      // 设置里出现“已下载好”一行，“不装了”删掉安装包、状态回到空闲
+      await cdp.eval("window.__uiStore.getState().openDialog({ kind: 'settings' })");
+      await cdp.waitFor("document.querySelector('.dialog h3') ? 1 : 0", 3000, '设置对话框');
+      check('设置里提示新版本已下载好', /9\.9\.9 已下载好/.test(await cdp.eval("document.querySelector('.dialog .body')?.textContent ?? ''")));
+      await cdp.eval("Array.from(document.querySelectorAll('.dialog button')).find(b => b.textContent.trim() === '不装了').click()");
+      await cdp.waitFor("window.__updateStore.getState().state.phase === 'idle' ? 1 : 0", 5000, '不装了');
+      check('「不装了」后安装包被删除、设置里的提示消失', !existsSync(pendingFile) && !/已下载好/.test(await cdp.eval("document.querySelector('.dialog .body')?.textContent ?? ''")));
+      await cdp.eval('window.__uiStore.getState().closeDialog()');
+      // 校验失败：latest.yml 里的 sha512 和文件对不上
+      const bad = await cdp.eval(`window.emojiBridge.updateDownload({ baseUrl: '${updateUrl}/bad/', version: '9.9.9' }).then(s => s.error ?? 'ok', e => e.message)`);
+      check('latest.yml 的校验值和文件不符 → 报校验不通过', /校验不通过/.test(bad), bad);
+      check('失败后状态为 error 且带原因', (await cdp.eval("(() => { const s = window.__updateStore.getState().state; return s.phase === 'error' && /校验不通过/.test(s.error) ? 1 : 0; })()")) === 1);
+      check('校验失败的文件没有留下', !existsSync(pendingFile));
+      // GitHub 给的 SHA-256 对不上（走加速站时对方给了别的内容）
+      const bad2 = await cdp.eval(`window.emojiBridge.updateDownload({ baseUrl: '${updateUrl}/', version: '9.9.9', sha256: '${'0'.repeat(64)}' }).then(s => s.error ?? 'ok', e => e.message)`);
+      check('GitHub 的 SHA-256 不符 → 报校验不通过并删掉文件', /校验不通过/.test(bad2) && !existsSync(pendingFile), bad2);
+      // 目录里没有 latest.yml（旧版本的 Release 没发这个文件）
+      const nofeed = await cdp.eval(`window.emojiBridge.updateDownload({ baseUrl: '${updateUrl}/nothing/', version: '9.9.9' }).then(s => s.error ?? 'ok', e => e.message)`);
+      check('没有 latest.yml → 提示到发布页下载', /latest\.yml/.test(nofeed), nofeed);
+      // 要装的版本和 latest.yml 对不上
+      const wrongVer = await cdp.eval(`window.emojiBridge.updateDownload({ baseUrl: '${updateUrl}/', version: '9.9.7' }).then(s => s.error ?? 'ok', e => e.message)`);
+      check('版本和 latest.yml 不一致 → 报错', /不一致/.test(wrongVer), wrongVer);
+      // 取消：限速目录，下载到一半取消
+      const slowPromise = cdp.eval(`window.emojiBridge.updateDownload({ baseUrl: '${updateUrl}/slow/', version: '9.9.9', via: '测试站' }).then(s => s.error ?? 'ok', e => e.message)`);
+      await cdp.waitFor("(() => { const s = window.__updateStore.getState().state; return s.phase === 'downloading' && s.transferred > 0 ? 1 : 0; })()", 20000, '下载进行中');
+      const mid = JSON.parse(await cdp.eval('JSON.stringify(window.__updateStore.getState().state)'));
+      check('下载中有进度（已传字节数、总大小、速度、来源）', mid.transferred > 0 && mid.total === feed.size && mid.via === '测试站' && mid.percent > 0 && mid.percent < 100 && mid.bytesPerSecond > 0, JSON.stringify(mid));
+      await cdp.eval('window.emojiBridge.updateCancel()');
+      const cancelledMsg = await slowPromise;
+      check('取消下载 → 调用方收到“已取消”', cancelledMsg === '已取消', cancelledMsg);
+      check('取消后状态回到空闲、临时文件清掉', (await cdp.eval('window.__updateStore.getState().state.phase')) === 'idle' && !existsSync(pendingFile) && !existsSync(path.join(cacheDir, 'pending', `temp-${installerName}`)));
+      // 取消后立刻换一条线路重下：不被上一次拖住
+      const redo = await cdp.eval(`window.emojiBridge.updateDownload({ baseUrl: '${updateUrl}/', version: '9.9.9' })`);
+      check('取消后换线路重下成功', redo.phase === 'downloaded', JSON.stringify(redo));
+      await cdp.eval('window.emojiBridge.updateCancel()');
+      await cdp.waitFor("window.__updateStore.getState().state.phase === 'idle' ? 1 : 0", 5000, '清理');
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
 
     // ---- 局域网同步：再起一个实例（另一个数据目录）当作“另一台设备”，两边通过 UDP 发现、配对、双向同步
     console.log('\n局域网同步');
@@ -1141,19 +1129,23 @@ async function main() {
     check('第二次正常退出', code2 === 0, `退出码 ${code2}`);
     const allLogs = proc.logs.join('');
     check('托盘图标已加载', !allLogs.includes('托盘图标缺失'));
-    const errorLines = allLogs.split('\n').filter((l) => /\b(Error|Uncaught|TypeError)\b/.test(l) && !/DevTools/.test(l));
+    // 更新弹窗探测加速站时某个站超时，Electron 会把 handler 抛的错记进日志：那是网络状况，不算主进程出错
+    const errorLines = allLogs
+      .split('\n')
+      .filter((l) => /\b(Error|Uncaught|TypeError)\b/.test(l) && !/DevTools/.test(l) && !/'net:fetchText': Error: 请求超时/.test(l));
     check('主进程没有报错', errorLines.length === 0, errorLines.slice(0, 2).join(' | '));
   } catch (e) {
-    failures++;
+    results.failures++;
     console.error('\n测试中断：', e.message);
     console.error('--- Electron 输出 ---\n' + proc.logs.join('').slice(-4000));
     proc.child.kill();
   } finally {
     server.close();
+    updateServer?.close();
   }
 
-  console.log(failures === 0 ? '\n全部通过' : `\n${failures} 项失败`);
-  process.exit(failures === 0 ? 0 : 1);
+  console.log(results.failures === 0 ? '\n全部通过' : `\n${results.failures} 项失败`);
+  process.exit(results.failures === 0 ? 0 : 1);
 }
 
 await main();
